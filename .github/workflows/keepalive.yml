@@ -1,14 +1,12 @@
-name: Keep Alive
+name: Keep-Alive Ping
 
 on:
   schedule:
-    - cron: "0 2 * * *" # jeden Tag um 2 Uhr nachts
-  workflow_dispatch:    # manueller Start möglich
+    - cron: '*/12 * * * *' # alle 12 Minuten
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render App
-        run: |
-          curl -s https://weeztix-webhook.onrender.com/weeztix || echo "Server nicht erreichbar"
+      - name: Ping Render Webhook
+        run: curl -s https://weeztix-automation.onrender.com/weeztix
