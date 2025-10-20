@@ -26,5 +26,5 @@ automatisch Pushover-Benachrichtigungen mit:
 ## 🕒 Keepalive
 
 Dieses Repo enthält eine GitHub Action (`keepalive.yml`),
-die täglich um 2 Uhr morgens deine Render-App pingt,
+die jede 12 Minuten die Render-App anpingt,
 damit sie aktiv bleibt.
