@@ -27,7 +27,7 @@ Die Lösung nutzt einen **Render-Webservice**, der alle Webhook-Anfragen von Wee
 
 ### 1️⃣ Render Webservice
 
-1. Repository bei GitHub hosten (z. B. `weeztix-automation`)
+1. Repository bei GitHub hosten
 2. Render → New → Web Service → Repository auswählen
 3. Build & Start Commands:
 
@@ -41,13 +41,12 @@ npm start
 ```env
 PUSHOVER_TOKEN=dein_pushover_token
 PUSHOVER_USER=dein_pushover_user
-PORT=10000
 ```
 
 5. Webhook-URL:
 
 ```
-https://weeztix-automation.onrender.com/weeztix
+https://<project>.onrender.com/weeztix
 ```
 
 ---
@@ -61,7 +60,7 @@ https://weeztix-automation.onrender.com/weeztix
 5. URL eintragen:
 
 ```
-https://weeztix-automation.onrender.com/weeztix
+https://<project>.onrender.com/weeztix
 ```
 
 6. Methode: `POST`
@@ -76,7 +75,7 @@ https://weeztix-automation.onrender.com/weeztix
 CMD Beispiel zum Testen:
 
 ```cmd
-curl -X POST https://weeztix-automation.onrender.com/weeztix -H "Content-Type: application/json" -d "{\"event\":\"Testevent\",\"tickets\":2,\"buyer\":\"Pascal Wolff\"}"
+curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: application/json" -d "{\"event\":\"Testevent\",\"tickets\":2,\"buyer\":\"Tim Ernst\"}"
 ```
 
 Im Render-Log sollte erscheinen:
@@ -107,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Render Webhook
-        run: curl -s https://weeztix-automation.onrender.com/weeztix
+        run: curl -s https://<project>.onrender.com/weeztix
 ```
 
 ---
