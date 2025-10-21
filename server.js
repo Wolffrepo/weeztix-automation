@@ -14,13 +14,13 @@ app.post("/weeztix", async (req, res) => {
     console.log(JSON.stringify(req.body, null, 2));
 
     // Eventname dynamisch
-    const eventName = req.body.event_name || req.body.event || "Unbekanntes Event";
+    const eventName = req.body.event_name || req.body.event || req.body.name || "Unbekanntes Event";
     // Anzahl neue Tickets (versuche tickets_sold oder bestellte tickets zu nutzen)
-    const ticketsNew = req.body.tickets_sold || req.body.tickets || 1;
+    const ticketsNew = req.body.tickets_sold || req.body.tickets || req.body.increment || 1;
     // Gesamtanzahl Tickets (falls vorhanden)
-    const ticketsTotal = req.body.total_tickets || req.body.sales_total || "unbekannt";
+    const ticketsTotal = req.body.total_tickets || req.body.sales_total || req.body.sold_count || "unbekannt";
 
-    const message = `${eventName} – ${ticketsNew} neue Tickets (insgesamt ${ticketsTotal})`;
+    const message = `${ticketsNew} neues Ticket / (insgesamt ${ticketsTotal})`;
 
     console.log("📤 Nachricht an Pushover:");
     console.log(message);
@@ -33,7 +33,7 @@ app.post("/weeztix", async (req, res) => {
         token: PUSHOVER_TOKEN,
         user: PUSHOVER_USER,
         message: message,
-        title: "🎟️ Ticketverkauf"
+        title: `🎟️ ${eventName}`
       })
     });
 
