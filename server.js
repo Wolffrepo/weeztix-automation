@@ -30,13 +30,15 @@ app.post("/weeztix", async (req, res) => {
     req.body.event_name ||
     req.body.event ||
     req.body.title ||
-    "Unbekanntes Event";
+    req.body.name ||
+    "nv";
 
   const ticketsNew =
     req.body.tickets_sold ||
     req.body.tickets ||
     req.body.quantity ||
     req.body.amount ||
+    req.body.increment ||
     0;
 
   const ticketsTotal =
@@ -44,7 +46,7 @@ app.post("/weeztix", async (req, res) => {
     req.body.sales_total ||
     req.body.total ||
     req.body.overall_count ||
-    "unbekannt";
+    "nv";
 
   const message = `${ticketsNew} neue Tickets / (insgesamt ${ticketsTotal})`;
 
