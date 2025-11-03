@@ -113,5 +113,11 @@ app.post("/admin/set", (req, res) => {
   res.send(`Ticket-Zähler für "${event_name}" gesetzt ✅`);
 });
 
+// --- Neuer Endpunkt: /stats ---
+app.get("/stats", (req, res) => {
+  const ticketsTotals = loadTickets();
+  res.json(ticketsTotals);
+});
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`🚀 Server läuft auf Port ${PORT}`));
