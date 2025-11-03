@@ -1,4 +1,3 @@
-
 # 🎟️ Weeztix Automation mit Pushover
 
 Dieses Projekt ermöglicht es, automatisch bei jedem Ticketverkauf in Weeztix eine Push-Benachrichtigung über Pushover zu versenden.  
@@ -10,8 +9,10 @@ Die Anwendung basiert auf einem Render-Webservice, der Webhook-Anfragen von Weez
 
 * Dynamische Verarbeitung aller Events ohne feste `event_id`  
 * Automatische Summierung aller verkauften Tickets pro Event  
+* Singular/Plural-Logik für Nachrichten: "neues Ticket verkauft" / "neue Tickets verkauft"  
 * Pushover-Benachrichtigungen bei jedem Ticketkauf  
 * Keep-Alive GitHub Action für dauerhafte Erreichbarkeit (Render Free-Tier)  
+* Admin-Endpoints zum Bearbeiten der Ticket-Summen  
 * Konfiguration vollständig über Environment Variables  
 
 ---
@@ -75,7 +76,7 @@ Die Anwendung basiert auf einem Render-Webservice, der Webhook-Anfragen von Weez
 
 8. Automation speichern und aktivieren
 
-Hinweis: Weitere Felder (z. B. Käufername, Datum) können optional als Parameter hinzugefügt werden. Sie werden automatisch erkannt und im Log ausgegeben.
+Hinweis: Weitere Felder (z. B. Käufername, Datum) können optional als Parameter hinzugefügt werden. Sie werden automatisch erkannt und im Log ausgegeben.
 
 ---
 
@@ -84,7 +85,7 @@ Hinweis: Weitere Felder (z. B. Käufername, Datum) können optional als Paramete
 #### Test über die Windows-Eingabeaufforderung (CMD)
 
 ```cmd
-curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: application/json" -d "{\"event_name\":\"Testevent\",\"ticket_count\":2}"
+curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: application/json" -d "{"event_name":"Testevent","ticket_count":2}"
 ```
 
 #### Beispielausgabe im Render-Log
@@ -97,7 +98,7 @@ curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: applicatio
   "event_name": "Testevent",
   "ticket_count": "2"
 }
-📤 Nachricht an Pushover: Testevent – 2 neue Tickets (insgesamt 12)
+📤 Nachricht an Pushover: Testevent – 2 neue Tickets verkauft (insgesamt 12)
 📬 Pushover Response: { "status": 1, "request": "abc123" }
 ```
 
@@ -127,12 +128,32 @@ Datei speichern unter:
 
 ---
 
+### 5️⃣ Admin-Endpoints
+
+#### Alle Ticket-Zähler zurücksetzen
+
+```bash
+curl -X POST https://<project>.onrender.com/admin/reset
+```
+
+#### Ticket-Zähler eines einzelnen Events setzen
+
+```bash
+curl -X POST https://<project>.onrender.com/admin/set -H "Content-Type: application/json" -d '{"event_name":"Konzert A","total":20}'
+```
+
+Hinweise:
+- `event_name` = Name des Events  
+- `total` = neue Gesamtsumme der Tickets für das Event  
+
+---
+
 ## 🧾 Projektstruktur
 
 ```
 .
-├── server.js          # Hauptlogik (Webhook + Ticketzähler + Pushover)
-├── tickets.json       # Lokale Speicherung der Gesamtsummen
+├── server.js          # Hauptlogik (Webhook + Ticketzähler + Pushover + Admin-Endpoints)
+├── tickets.json       # Lokale Speicherung der Gesamtsummen (automatisch erstellt)
 ├── package.json       # NPM-Konfiguration
 ├── README.md          # Projektdokumentation
 └── .github/
@@ -148,14 +169,16 @@ Nach jedem erfolgreichen Ticketverkauf sendet das System automatisch folgende Na
 
 ```
 🎟️ <Eventname>
-<Anzahl neue Tickets> neue Tickets (insgesamt <Gesamtsumme>)
+<Anzahl neue Tickets> neue Tickets verkauft (insgesamt <Gesamtsumme>)
 ```
 
 Beispiel:
 
 ```
 🎟️ Konzert A
-3 neue Tickets (insgesamt 12)
+1 neues Ticket verkauft (insgesamt 12)
+🎟️ Konzert B
+3 neue Tickets verkauft (insgesamt 20)
 ```
 
 ---
@@ -165,7 +188,9 @@ Beispiel:
 * Kein API-Key oder Login bei Weeztix erforderlich  
 * Automatische Funktion für alle bestehenden und neuen Events  
 * Logs in Render zeigen alle empfangenen Felder der Webhook-Payload  
-* Zum Zurücksetzen der Gesamtsummen kann die Datei `tickets.json` gelöscht werden  
+* `tickets.json` wird automatisch erstellt; manuelles Anlegen ist nicht nötig  
+* Änderungen an Summen können über die Admin-Endpoints durchgeführt werden  
+* Zum Zurücksetzen oder Anpassen einzelner Events müssen keine Dateien manuell bearbeitet werden  
 
 ---
 
@@ -179,4 +204,4 @@ Render protokolliert alle eingehenden Anfragen, wodurch die empfangenen Daten je
 ## 👨‍💻 Autor
 
 **Pascal Wolff**  
-Systemadministrator - Automatisierung & Infrastruktur
+Automatisierung & Infrastruktur – INFORM GmbH
