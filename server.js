@@ -1,7 +1,6 @@
 import express from "express";
 import fetch from "node-fetch";
-import fs from "fs";
-import path from "path";
+import mysql from "mysql2/promise";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -11,21 +10,56 @@ app.use(express.text({ type: "*/*" }));
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-const TICKETS_FILE = path.resolve("./tickets.json");
-
-function loadTickets() {
-  if (fs.existsSync(TICKETS_FILE)) {
-    try {
-      return JSON.parse(fs.readFileSync(TICKETS_FILE, "utf8"));
-    } catch {
-      return {};
-    }
-  }
-  return {};
+// --- MySQL Verbindung ---
+async function getConnection() {
+  return mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASS,
+    database: process.env.DB_NAME,
+  });
 }
 
-function saveTickets(tickets) {
-  fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), "utf8");
+// --- Tickets in DB speichern / aktualisieren ---
+async function saveTicketToDB(eventName, ticketsNew) {
+  const connection = await getConnection();
+
+  // Prüfen, ob Event existiert
+  const [rows] = await connection.execute(
+    "SELECT total FROM tickets WHERE event_name = ?",
+    [eventName]
+  );
+
+  if (rows.length === 0) {
+    // Neues Event anlegen
+    await connection.execute(
+      "INSERT INTO tickets (event_name, total) VALUES (?, ?)",
+      [eventName, ticketsNew]
+    );
+  } else {
+    // Summe aktualisieren
+    const newTotal = rows[0].total + ticketsNew;
+    await connection.execute(
+      "UPDATE tickets SET total = ? WHERE event_name = ?",
+      [newTotal, eventName]
+    );
+  }
+
+  await connection.end();
+}
+
+// --- Tickets aus DB abrufen ---
+async function getAllTickets() {
+  const connection = await getConnection();
+  const [rows] = await connection.execute("SELECT * FROM tickets");
+  await connection.end();
+
+  const ticketsTotals = {};
+  rows.forEach(row => {
+    ticketsTotals[row.event_name] = row.total;
+  });
+
+  return ticketsTotals;
 }
 
 // --- Weeztix Webhook ---
@@ -59,12 +93,13 @@ app.post("/weeztix", async (req, res) => {
   const eventName = data.event_name || "null";
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  const ticketsTotals = loadTickets();
-  if (!ticketsTotals[eventName]) ticketsTotals[eventName] = 0;
-  ticketsTotals[eventName] += ticketsNew;
-  saveTickets(ticketsTotals);
+  // In DB speichern / aktualisieren
+  await saveTicketToDB(eventName, ticketsNew);
 
-  const ticketsTotal = ticketsTotals[eventName];
+  // Gesamtzahl abfragen
+  const ticketsTotals = await getAllTickets();
+  const ticketsTotal = ticketsTotals[eventName] || ticketsNew;
+
   const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
   const message = `${ticketsNew} ${ticketWording} (insgesamt ${ticketsTotal})`;
 
@@ -93,29 +128,48 @@ app.post("/weeztix", async (req, res) => {
 });
 
 // --- Admin-Endpoint: Summen zurücksetzen ---
-app.post("/admin/reset", (req, res) => {
-  const ticketsTotals = {};
-  saveTickets(ticketsTotals);
+app.post("/admin/reset", async (req, res) => {
+  const connection = await getConnection();
+  await connection.execute("TRUNCATE TABLE tickets");
+  await connection.end();
   console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
   res.send("Alle Ticket-Zähler zurückgesetzt ✅");
 });
 
 // --- Admin-Endpoint: Einzelnes Event setzen ---
-app.post("/admin/set", (req, res) => {
+app.post("/admin/set", async (req, res) => {
   const { event_name, total } = req.body;
   if (!event_name || typeof total !== "number") {
     return res.status(400).send("Bitte event_name und total (Number) angeben");
   }
-  const ticketsTotals = loadTickets();
-  ticketsTotals[event_name] = total;
-  saveTickets(ticketsTotals);
+
+  const connection = await getConnection();
+  // Prüfen ob Event existiert
+  const [rows] = await connection.execute(
+    "SELECT total FROM tickets WHERE event_name = ?",
+    [event_name]
+  );
+
+  if (rows.length === 0) {
+    await connection.execute(
+      "INSERT INTO tickets (event_name, total) VALUES (?, ?)",
+      [event_name, total]
+    );
+  } else {
+    await connection.execute(
+      "UPDATE tickets SET total = ? WHERE event_name = ?",
+      [total, event_name]
+    );
+  }
+
+  await connection.end();
   console.log(`⚠️ Ticket-Zähler für Event "${event_name}" gesetzt auf ${total}`);
   res.send(`Ticket-Zähler für "${event_name}" gesetzt ✅`);
 });
 
-// --- Neuer Endpunkt: /stats ---
-app.get("/stats", (req, res) => {
-  const ticketsTotals = loadTickets();
+// --- Stats Endpoint ---
+app.get("/stats", async (req, res) => {
+  const ticketsTotals = await getAllTickets();
   res.json(ticketsTotals);
 });
 
