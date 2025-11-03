@@ -1,105 +1,117 @@
-# Weeztix Automation mit Pushover
+# 🎟️ Weeztix Automation mit Pushover
 
-Dieses Projekt ermöglicht es, **automatisch bei jedem Ticketverkauf in Weeztix** eine Push-Benachrichtigung über **Pushover** zu erhalten.
-Die Lösung nutzt einen **Render-Webservice**, der alle Webhook-Anfragen von Weeztix verarbeitet.
+Dieses Projekt ermöglicht es, automatisch bei jedem Ticketverkauf in Weeztix eine Push-Benachrichtigung über Pushover zu versenden.  
+Die Anwendung basiert auf einem Render-Webservice, der Webhook-Anfragen von Weeztix empfängt, verarbeitet und die verkauften Tickets pro Event summiert.
 
 ---
 
-## 📌 Features
+## 📌 Funktionen
 
-* Dynamische Verarbeitung aller Events ohne feste `event_id`
-* Sofortige Pushover-Nachrichten bei Ticketkauf
-* Keep-Alive Workflow über GitHub Actions für Free-Tier Render
-* Vollständig konfigurierbar über Environment Variables
+* Dynamische Verarbeitung aller Events ohne feste `event_id`  
+* Automatische Summierung aller verkauften Tickets pro Event  
+* Pushover-Benachrichtigungen bei jedem Ticketkauf  
+* Keep-Alive GitHub Action für dauerhafte Erreichbarkeit (Render Free-Tier)  
+* Konfiguration vollständig über Environment Variables  
 
 ---
 
 ## 🛠️ Voraussetzungen
 
-* **Weeztix Organizer Account**
-* **Pushover Account** mit `TOKEN` und `USER`
-* **GitHub Account** (für Keep-Alive)
-* **Render Account** (kostenlos reicht)
+* Weeztix Organizer Account mit aktivierter Automationsfunktion  
+* Pushover Account mit gültigem `TOKEN` und `USER`  
+* GitHub Account (für Keep-Alive-Workflow)  
+* Render Account (kostenlose Version ausreichend)
 
 ---
 
-## ⚙️ Setup
+## ⚙️ Einrichtung
 
 ### 1️⃣ Render Webservice
 
-1. Repository bei GitHub hosten
-2. Render → New → Web Service → Repository auswählen
-3. Build & Start Commands:
+1. Repository auf GitHub hosten oder forken  
+2. Auf [Render](https://render.com) navigieren → **New → Web Service → Repository auswählen**  
+3. Folgende Befehle verwenden:
 
-```bash
-npm install
-npm start
-```
+   ```bash
+   npm install
+   npm start
+   ```
 
-4. Environment Variables in Render setzen:
+4. Environment Variables in Render eintragen:
 
-```env
-PUSHOVER_TOKEN=dein_pushover_token
-PUSHOVER_USER=dein_pushover_user
-```
+   ```env
+   PUSHOVER_TOKEN=dein_pushover_token
+   PUSHOVER_USER=dein_pushover_user
+   ```
 
-5. Webhook-URL:
+5. Nach erfolgreichem Deployment lautet die Webhook-URL beispielsweise:
 
-```
-https://<project>.onrender.com/weeztix
-```
+   ```
+   https://weeztix-automation.onrender.com/weeztix
+   ```
 
 ---
 
 ### 2️⃣ Weeztix Automation
 
-1. Weeztix → Automationen → Neue Automation
-2. Trigger: **Bei neuer Bestellung / Ticketkauf**
-3. Action: **Send Request**
-4. Webhook Account: **Neuen Account anlegen** → Authentifizierung: None
-5. URL eintragen:
+1. In Weeztix: **Automationen → Neue Automation**  
+2. Trigger: **Bei neuer Bestellung / Ticketkauf**  
+3. Aktion: **HTTP Request / Outgoing Webhook**  
+4. Webhook Account: **Neuen Account anlegen**, Authentifizierung: **None**  
+5. Methode: `POST`  
+6. URL eintragen:
 
-```
-https://<project>.onrender.com/weeztix
-```
+   ```
+   https://<project>.onrender.com/weeztix
+   ```
 
-6. Methode: `POST`
-7. Speichern & Aktivieren
+7. Folgende Request Parameters hinzufügen:
 
-> Hinweis: Alle Daten werden automatisch im JSON-Body gesendet, keine festen Parameter notwendig.
+   | Name | Typ | Inhalt in Weeztix |
+   |------|-----|------------------|
+   | `event_name` | String | Order Paid: Name (Shop) |
+   | `ticket_count` | String | Order Paid: Tickets |
+
+8. Automation speichern und aktivieren
+
+Hinweis: Weitere Felder (z. B. Käufername, Datum) können optional als Parameter hinzugefügt werden. Sie werden automatisch erkannt und im Log ausgegeben.
 
 ---
 
-### 3️⃣ Testen
+### 3️⃣ Test
 
-CMD Beispiel zum Testen:
+#### Test über die Windows-Eingabeaufforderung (CMD)
 
 ```cmd
-curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: application/json" -d "{\"event\":\"Testevent\",\"tickets\":2,\"buyer\":\"Tim Ernst\"}"
+curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: application/json" -d "{\"event_name\":\"Testevent\",\"ticket_count\":2}"
 ```
 
-Im Render-Log sollte erscheinen:
+#### Beispielausgabe im Render-Log
 
 ```
-🎟️ Neue Anfrage von Weeztix erhalten!
-🔹 Headers: {...}
-🔹 Query Params: {...}
-🔹 Body: {...}
-📤 Nachricht an Pushover: Testevent – 2 neue Tickets (insgesamt unbekannt)
+📩 Neue Anfrage von Weeztix empfangen!
+📦 JSON oder URL-Encoded erkannt
+🔍 Empfangene Felder:
+{
+  "event_name": "Testevent",
+  "ticket_count": "2"
+}
+📤 Nachricht an Pushover: Testevent – 2 neue Tickets (insgesamt 12)
+📬 Pushover Response: { "status": 1, "request": "abc123" }
 ```
 
 ---
 
 ### 4️⃣ Keep-Alive Workflow (GitHub Actions)
 
-Erstellt einen Ping alle 15 Minuten, damit der Free-Tier Render-Service **nicht einschläft**:
+Damit der Render-Service im Free-Tier nicht in den Ruhemodus übergeht, kann folgender Workflow eingerichtet werden:
 
 ```yaml
 name: Keep-Alive Ping
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '0 */6 * * *'  # alle 6 Stunden
 
 jobs:
   ping:
@@ -109,18 +121,61 @@ jobs:
         run: curl -s https://<project>.onrender.com/weeztix
 ```
 
----
-
-## 📝 Hinweise
-
-* **Weeztix Username / Passwort / API-Key** wird **nicht mehr benötigt**
-* Die Automation funktioniert automatisch für **alle bestehenden und neuen Events**
-* Pushover-Token/User muss korrekt gesetzt sein, sonst kommen keine Push-Benachrichtigungen
-* Service schläft nur ein, wenn Keep-Alive nicht aktiviert ist
+Datei speichern unter:  
+`.github/workflows/keepalive.yml`
 
 ---
 
-## ⚡ Fertig!
+## 🧾 Projektstruktur
 
-Nach dem Setup bekommst du **bei jedem Ticketkauf automatisch eine Pushover-Nachricht**.
-Logs in Render zeigen dir genau, welche Daten vom Webhook empfangen werden.
+```
+.
+├── server.js          # Hauptlogik (Webhook + Ticketzähler + Pushover)
+├── tickets.json       # Lokale Speicherung der Gesamtsummen
+├── package.json       # NPM-Konfiguration
+├── README.md          # Projektdokumentation
+└── .github/
+    └── workflows/
+        └── keepalive.yml
+```
+
+---
+
+## 🔔 Pushover-Benachrichtigungen
+
+Nach jedem erfolgreichen Ticketverkauf sendet das System automatisch folgende Nachricht:
+
+```
+🎟️ <Eventname>
+<Anzahl neue Tickets> neue Tickets (insgesamt <Gesamtsumme>)
+```
+
+Beispiel:
+
+```
+🎟️ Konzert A
+3 neue Tickets (insgesamt 12)
+```
+
+---
+
+## 🧠 Hinweise
+
+* Kein API-Key oder Login bei Weeztix erforderlich  
+* Automatische Funktion für alle bestehenden und neuen Events  
+* Logs in Render zeigen alle empfangenen Felder der Webhook-Payload  
+* Zum Zurücksetzen der Gesamtsummen kann die Datei `tickets.json` gelöscht werden  
+
+---
+
+## ⚡ Abschluss
+
+Nach der Einrichtung werden bei jedem Ticketverkauf automatisch Push-Benachrichtigungen über Pushover versendet.  
+Render protokolliert alle eingehenden Anfragen, wodurch die empfangenen Daten jederzeit nachvollzogen werden können.
+
+---
+
+## 👨‍💻 Autor
+
+**Pascal Wolff**  
+Systemadministrator - Automatisierung & Infrastruktur
