@@ -1,3 +1,4 @@
+
 # 🎟️ Weeztix Automation mit Pushover
 
 Dieses Projekt ermöglicht es, automatisch bei jedem Ticketverkauf in Weeztix eine Push-Benachrichtigung über Pushover zu versenden.  
