@@ -43,13 +43,13 @@ app.post("/weeztix", async (req, res) => {
 
   // dynamische Zuordnung
   const eventName =
-    data.event_name || data.event || data.title || data.name || "null";
+    data.event_name || "null";
 
   const ticketsNew =
-    data.tickets_sold || data.tickets || data.quantity || data.amount || data.nb_tickets|| data.increment || 0;
+    data.ticket_count || 0;
 
   const ticketsTotal =
-    data.total_tickets || data.sales_total || data.total || data.overall_count || data.nb_total || "null";
+    data.total_tickets || "null";
 
   const message = `${ticketsNew} neue Tickets (insgesamt ${ticketsTotal})`;
 
