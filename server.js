@@ -1,6 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import fs from "fs";
+import path from "path";
 
 const app = express();
 
@@ -11,26 +12,25 @@ app.use(express.text({ type: "*/*" }));
 
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
-const DATA_FILE = "./tickets.json";
 
-// 🧠 Hilfsfunktionen für lokale Speicherung
-function loadData() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(DATA_FILE));
+// Datei zum Speichern der Summen
+const TICKETS_FILE = path.resolve("./tickets.json");
+
+// Hilfsfunktion: Laden der aktuellen Summen
+function loadTickets() {
+  if (fs.existsSync(TICKETS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(TICKETS_FILE, "utf8"));
+    } catch {
+      return {};
     }
-  } catch (err) {
-    console.error("❌ Fehler beim Lesen von tickets.json:", err);
   }
   return {};
 }
 
-function saveData(data) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.error("❌ Fehler beim Schreiben von tickets.json:", err);
-  }
+// Hilfsfunktion: Speichern der Summen
+function saveTickets(tickets) {
+  fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), "utf8");
 }
 
 app.post("/weeztix", async (req, res) => {
@@ -62,27 +62,23 @@ app.post("/weeztix", async (req, res) => {
 
   console.log("🔍 Empfangene Felder:", JSON.stringify(data, null, 2));
 
-  // dynamische Zuordnung
-  const eventName = data.event_name || "Unbekanntes Event";
+  const eventName = data.event_name || "null";
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  if (!ticketsNew) {
-    console.log("⚠️ Keine Ticketanzahl erkannt, Abbruch.");
-    return res.status(200).send("Keine Ticketanzahl erkannt");
-  }
+  // Summen laden und aktualisieren
+  const ticketsTotals = loadTickets();
+  if (!ticketsTotals[eventName]) ticketsTotals[eventName] = 0;
+  ticketsTotals[eventName] += ticketsNew;
+  saveTickets(ticketsTotals);
 
-  // 🔢 Aktuelle Zähler laden und aktualisieren
-  const db = loadData();
-  if (!db[eventName]) db[eventName] = 0;
-  db[eventName] += ticketsNew;
-  saveData(db);
+  const ticketsTotal = ticketsTotals[eventName];
 
-  const ticketsTotal = db[eventName];
-  const message = `${ticketsNew} neue Tickets (insgesamt ${ticketsTotal})`;
+  // Singular / Plural
+  const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
+  const message = `${ticketsNew} ${ticketWording} (insgesamt ${ticketsTotal})`;
 
-  console.log(`📤 Nachricht an Pushover: [${eventName}] ${message}`);
+  console.log("📤 Nachricht an Pushover:", message);
 
-  // 📲 Nachricht an Pushover senden
   if (PUSHOVER_TOKEN && PUSHOVER_USER) {
     try {
       const resp = await fetch("https://api.pushover.net/1/messages.json", {
@@ -105,12 +101,6 @@ app.post("/weeztix", async (req, res) => {
   }
 
   res.status(200).send("Webhook verarbeitet ✅");
-});
-
-// 📊 Übersicht der gespeicherten Ticketzahlen
-app.get("/stats", (req, res) => {
-  const db = loadData();
-  res.json(db);
 });
 
 const PORT = process.env.PORT || 10000;
