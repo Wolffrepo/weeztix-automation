@@ -128,7 +128,13 @@ Datei speichern unter:
 
 ---
 
-### 5️⃣ Admin-Endpoints
+### 5️⃣ Stats- und Admin-Endpoints
+
+#### Stats abrufen
+
+```bash
+https://<project>.onrender.com/stats
+```
 
 #### Alle Ticket-Zähler zurücksetzen
 
