@@ -4,8 +4,6 @@ import fs from "fs";
 import path from "path";
 
 const app = express();
-
-// alle möglichen Formate erlauben
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.text({ type: "*/*" }));
@@ -13,10 +11,8 @@ app.use(express.text({ type: "*/*" }));
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-// Datei zum Speichern der Summen
 const TICKETS_FILE = path.resolve("./tickets.json");
 
-// Hilfsfunktion: Laden der aktuellen Summen
 function loadTickets() {
   if (fs.existsSync(TICKETS_FILE)) {
     try {
@@ -28,17 +24,15 @@ function loadTickets() {
   return {};
 }
 
-// Hilfsfunktion: Speichern der Summen
 function saveTickets(tickets) {
   fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), "utf8");
 }
 
+// --- Weeztix Webhook ---
 app.post("/weeztix", async (req, res) => {
   console.log("📩 Neue Anfrage von Weeztix empfangen!");
 
   let data = {};
-
-  // prüfen, welches Format angekommen ist
   if (typeof req.body === "string") {
     try {
       data = JSON.parse(req.body);
@@ -65,15 +59,12 @@ app.post("/weeztix", async (req, res) => {
   const eventName = data.event_name || "null";
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  // Summen laden und aktualisieren
   const ticketsTotals = loadTickets();
   if (!ticketsTotals[eventName]) ticketsTotals[eventName] = 0;
   ticketsTotals[eventName] += ticketsNew;
   saveTickets(ticketsTotals);
 
   const ticketsTotal = ticketsTotals[eventName];
-
-  // Singular / Plural
   const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
   const message = `${ticketsNew} ${ticketWording} (insgesamt ${ticketsTotal})`;
 
@@ -96,11 +87,30 @@ app.post("/weeztix", async (req, res) => {
     } catch (err) {
       console.error("❌ Fehler beim Senden an Pushover:", err);
     }
-  } else {
-    console.log("⚠️ Kein Pushover Token/User gesetzt – Nachricht nicht gesendet.");
   }
 
   res.status(200).send("Webhook verarbeitet ✅");
+});
+
+// --- Admin-Endpoint: Summen zurücksetzen ---
+app.post("/admin/reset", (req, res) => {
+  const ticketsTotals = {};
+  saveTickets(ticketsTotals);
+  console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
+  res.send("Alle Ticket-Zähler zurückgesetzt ✅");
+});
+
+// --- Admin-Endpoint: Einzelnes Event setzen ---
+app.post("/admin/set", (req, res) => {
+  const { event_name, total } = req.body;
+  if (!event_name || typeof total !== "number") {
+    return res.status(400).send("Bitte event_name und total (Number) angeben");
+  }
+  const ticketsTotals = loadTickets();
+  ticketsTotals[event_name] = total;
+  saveTickets(ticketsTotals);
+  console.log(`⚠️ Ticket-Zähler für Event "${event_name}" gesetzt auf ${total}`);
+  res.send(`Ticket-Zähler für "${event_name}" gesetzt ✅`);
 });
 
 const PORT = process.env.PORT || 10000;
