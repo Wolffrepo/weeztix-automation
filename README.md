@@ -130,7 +130,7 @@ Datei speichern unter:
 
 ### 5️⃣ Stats- und Admin-Endpoints
 
-#### Stats abrufen
+#### Ticketzahlen abrufen
 
 ```bash
 https://<project>.onrender.com/stats
@@ -145,7 +145,7 @@ curl -X POST https://<project>.onrender.com/admin/reset
 #### Ticket-Zähler eines einzelnen Events setzen
 
 ```bash
-curl -X POST https://<project>.onrender.com/admin/set -H "Content-Type: application/json" -d '{"event_name":"Konzert A","total":20}'
+curl -X POST https://<project>.onrender.com/admin/set -H "Content-Type: application/json" -d "{\"event_name\":\"Konzert A\",\"total\":1}"
 ```
 
 Hinweise:
