@@ -210,4 +210,4 @@ Render protokolliert alle eingehenden Anfragen, wodurch die empfangenen Daten je
 ## 👨‍💻 Autor
 
 **Pascal Wolff**  
-Automatisierung & Infrastruktur – INFORM GmbH
+Systemadministrator - Automatisierung & Infrastruktur
