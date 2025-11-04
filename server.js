@@ -1,6 +1,5 @@
 import express from "express";
 import fetch from "node-fetch";
-import mysql from "mysql2/promise";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -10,54 +9,25 @@ app.use(express.text({ type: "*/*" }));
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-// --- MySQL Verbindung ---
-async function getConnection() {
-  return mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
-    ssl: { rejectUnauthorized: true } // falls Strato SSL benötigt
+// --- Strato REST API URLs ---
+const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;       // z.B. https://deinedomain.de/weeztix-api/getTickets.php
+const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;   // z.B. https://deinedomain.de/weeztix-api/updateTicket.php
+const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;   // optional
+
+// --- Funktion: Ticket hinzufügen / aktualisieren ---
+async function saveTicketToStrato(eventName, ticketsNew) {
+  const res = await fetch(STRATO_UPDATE_TICKET, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew })
   });
+  return res.json();
 }
 
-// --- Tickets in DB speichern / aktualisieren ---
-async function saveTicketToDB(eventName, ticketsNew) {
-  const connection = await getConnection();
-
-  const [rows] = await connection.execute(
-    "SELECT total FROM tickets WHERE event_name = ?",
-    [eventName]
-  );
-
-  if (rows.length === 0) {
-    await connection.execute(
-      "INSERT INTO tickets (event_name, total) VALUES (?, ?)",
-      [eventName, ticketsNew]
-    );
-  } else {
-    const newTotal = rows[0].total + ticketsNew;
-    await connection.execute(
-      "UPDATE tickets SET total = ? WHERE event_name = ?",
-      [newTotal, eventName]
-    );
-  }
-
-  await connection.end();
-}
-
-// --- Tickets aus DB abrufen ---
-async function getAllTickets() {
-  const connection = await getConnection();
-  const [rows] = await connection.execute("SELECT * FROM tickets");
-  await connection.end();
-
-  const ticketsTotals = {};
-  rows.forEach(row => {
-    ticketsTotals[row.event_name] = row.total;
-  });
-
-  return ticketsTotals;
+// --- Funktion: Alle Tickets abrufen ---
+async function getAllTicketsFromStrato() {
+  const res = await fetch(STRATO_GET_TICKETS);
+  return res.json();
 }
 
 // --- Weeztix Webhook ---
@@ -91,9 +61,10 @@ app.post("/weeztix", async (req, res) => {
   const eventName = data.event_name || "null";
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  await saveTicketToDB(eventName, ticketsNew);
+  // Tickets an Strato senden
+  await saveTicketToStrato(eventName, ticketsNew);
 
-  const ticketsTotals = await getAllTickets();
+  const ticketsTotals = await getAllTicketsFromStrato();
   const ticketsTotal = ticketsTotals[eventName] || ticketsNew;
 
   const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
@@ -123,13 +94,13 @@ app.post("/weeztix", async (req, res) => {
   res.status(200).send("Webhook verarbeitet ✅");
 });
 
-// --- Admin-Endpoints ---
+// --- Admin Endpoints ---
 app.post("/admin/reset", async (req, res) => {
-  const connection = await getConnection();
-  await connection.execute("TRUNCATE TABLE tickets");
-  await connection.end();
+  if (!STRATO_RESET_TICKETS) return res.status(500).send("Reset URL nicht gesetzt");
+  const resp = await fetch(STRATO_RESET_TICKETS);
+  const result = await resp.json();
   console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
-  res.send("Alle Ticket-Zähler zurückgesetzt ✅");
+  res.json(result);
 });
 
 app.post("/admin/set", async (req, res) => {
@@ -138,32 +109,19 @@ app.post("/admin/set", async (req, res) => {
     return res.status(400).send("Bitte event_name und total (Number) angeben");
   }
 
-  const connection = await getConnection();
-  const [rows] = await connection.execute(
-    "SELECT total FROM tickets WHERE event_name = ?",
-    [event_name]
-  );
+  // Für Set: berechne Differenz und sende als update
+  const ticketsTotals = await getAllTicketsFromStrato();
+  const current = ticketsTotals[event_name] || 0;
+  const diff = total - current;
+  await saveTicketToStrato(event_name, diff);
 
-  if (rows.length === 0) {
-    await connection.execute(
-      "INSERT INTO tickets (event_name, total) VALUES (?, ?)",
-      [event_name, total]
-    );
-  } else {
-    await connection.execute(
-      "UPDATE tickets SET total = ? WHERE event_name = ?",
-      [total, event_name]
-    );
-  }
-
-  await connection.end();
   console.log(`⚠️ Ticket-Zähler für Event "${event_name}" gesetzt auf ${total}`);
   res.send(`Ticket-Zähler für "${event_name}" gesetzt ✅`);
 });
 
 // --- Stats Endpoint ---
 app.get("/stats", async (req, res) => {
-  const ticketsTotals = await getAllTickets();
+  const ticketsTotals = await getAllTicketsFromStrato();
   res.json(ticketsTotals);
 });
 
