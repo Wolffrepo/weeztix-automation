@@ -10,24 +10,43 @@ const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
 // --- Strato REST API URLs ---
-const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;       // z.B. https://deinedomain.de/weeztix-api/getTickets.php
-const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;   // z.B. https://deinedomain.de/weeztix-api/updateTicket.php
-const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;   // optional
+const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;
+const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
+const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS; // optional
 
-// --- Funktion: Ticket hinzufügen / aktualisieren ---
-async function saveTicketToStrato(eventName, ticketsNew) {
-  const res = await fetch(STRATO_UPDATE_TICKET, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew })
-  });
-  return res.json();
+// --- Helper: sichere JSON-Abfrage von Strato ---
+async function fetchJson(url, options) {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      console.error(`❌ Strato API Fehler: ${res.status} ${res.statusText}`);
+      return {};
+    }
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      console.error("❌ Strato liefert kein JSON:", text);
+      return {};
+    }
+  } catch (err) {
+    console.error("❌ Fehler beim Abrufen von Strato:", err);
+    return {};
+  }
 }
 
-// --- Funktion: Alle Tickets abrufen ---
+// --- Tickets an Strato senden ---
+async function saveTicketToStrato(eventName, ticketsNew) {
+  return fetchJson(STRATO_UPDATE_TICKET, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew }),
+  });
+}
+
+// --- Alle Tickets abrufen ---
 async function getAllTicketsFromStrato() {
-  const res = await fetch(STRATO_GET_TICKETS);
-  return res.json();
+  return fetchJson(STRATO_GET_TICKETS);
 }
 
 // --- Weeztix Webhook ---
@@ -61,9 +80,7 @@ app.post("/weeztix", async (req, res) => {
   const eventName = data.event_name || "null";
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  // Tickets an Strato senden
   await saveTicketToStrato(eventName, ticketsNew);
-
   const ticketsTotals = await getAllTicketsFromStrato();
   const ticketsTotal = ticketsTotals[eventName] || ticketsNew;
 
@@ -80,7 +97,7 @@ app.post("/weeztix", async (req, res) => {
         body: JSON.stringify({
           token: PUSHOVER_TOKEN,
           user: PUSHOVER_USER,
-          message: message,
+          message,
           title: `🎟️ ${eventName}`,
         }),
       });
@@ -97,8 +114,7 @@ app.post("/weeztix", async (req, res) => {
 // --- Admin Endpoints ---
 app.post("/admin/reset", async (req, res) => {
   if (!STRATO_RESET_TICKETS) return res.status(500).send("Reset URL nicht gesetzt");
-  const resp = await fetch(STRATO_RESET_TICKETS);
-  const result = await resp.json();
+  const result = await fetchJson(STRATO_RESET_TICKETS);
   console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
   res.json(result);
 });
@@ -109,7 +125,6 @@ app.post("/admin/set", async (req, res) => {
     return res.status(400).send("Bitte event_name und total (Number) angeben");
   }
 
-  // Für Set: berechne Differenz und sende als update
   const ticketsTotals = await getAllTicketsFromStrato();
   const current = ticketsTotals[event_name] || 0;
   const diff = total - current;
