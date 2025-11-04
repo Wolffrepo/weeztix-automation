@@ -17,6 +17,7 @@ async function getConnection() {
     user: process.env.DB_USER,
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
+    ssl: { rejectUnauthorized: true } // falls Strato SSL benötigt
   });
 }
 
@@ -24,20 +25,17 @@ async function getConnection() {
 async function saveTicketToDB(eventName, ticketsNew) {
   const connection = await getConnection();
 
-  // Prüfen, ob Event existiert
   const [rows] = await connection.execute(
     "SELECT total FROM tickets WHERE event_name = ?",
     [eventName]
   );
 
   if (rows.length === 0) {
-    // Neues Event anlegen
     await connection.execute(
       "INSERT INTO tickets (event_name, total) VALUES (?, ?)",
       [eventName, ticketsNew]
     );
   } else {
-    // Summe aktualisieren
     const newTotal = rows[0].total + ticketsNew;
     await connection.execute(
       "UPDATE tickets SET total = ? WHERE event_name = ?",
@@ -93,10 +91,8 @@ app.post("/weeztix", async (req, res) => {
   const eventName = data.event_name || "null";
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  // In DB speichern / aktualisieren
   await saveTicketToDB(eventName, ticketsNew);
 
-  // Gesamtzahl abfragen
   const ticketsTotals = await getAllTickets();
   const ticketsTotal = ticketsTotals[eventName] || ticketsNew;
 
@@ -127,7 +123,7 @@ app.post("/weeztix", async (req, res) => {
   res.status(200).send("Webhook verarbeitet ✅");
 });
 
-// --- Admin-Endpoint: Summen zurücksetzen ---
+// --- Admin-Endpoints ---
 app.post("/admin/reset", async (req, res) => {
   const connection = await getConnection();
   await connection.execute("TRUNCATE TABLE tickets");
@@ -136,7 +132,6 @@ app.post("/admin/reset", async (req, res) => {
   res.send("Alle Ticket-Zähler zurückgesetzt ✅");
 });
 
-// --- Admin-Endpoint: Einzelnes Event setzen ---
 app.post("/admin/set", async (req, res) => {
   const { event_name, total } = req.body;
   if (!event_name || typeof total !== "number") {
@@ -144,7 +139,6 @@ app.post("/admin/set", async (req, res) => {
   }
 
   const connection = await getConnection();
-  // Prüfen ob Event existiert
   const [rows] = await connection.execute(
     "SELECT total FROM tickets WHERE event_name = ?",
     [event_name]
