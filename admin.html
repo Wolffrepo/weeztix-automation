@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Weeztix Admin</title>
+  <style>
+    body { font-family: sans-serif; background: #f7f7f7; color: #333; padding: 30px; }
+    h1 { color: #222; }
+    input, button { padding: 8px; margin: 5px 0; width: 100%; max-width: 400px; }
+    .box { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .result { margin-top: 15px; white-space: pre-wrap; background: #eee; padding: 10px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🎟️ Weeztix Admin</h1>
+    <input id="password" type="password" placeholder="Admin Passwort">
+    <input id="event_name" type="text" placeholder="Eventname">
+    <input id="tickets" type="number" placeholder="Ticketanzahl (neu)">
+    <button onclick="updateTickets()">Aktualisieren</button>
+    <div id="output" class="result"></div>
+  </div>
+
+  <script>
+    async function updateTickets() {
+      const password = document.getElementById("password").value;
+      const event_name = document.getElementById("event_name").value;
+      const tickets = parseInt(document.getElementById("tickets").value);
+
+      const res = await fetch("https://pwevent.de/api.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password,
+          action: "update_tickets",
+          event_name,
+          tickets_new: tickets
+        }),
+      });
+
+      const data = await res.text();
+      document.getElementById("output").innerText = data;
+    }
+  </script>
+</body>
+</html>
