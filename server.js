@@ -13,7 +13,12 @@ const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;
 const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
 const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;
-const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN;
+const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN; // Token aus Env Variable
+
+if (!STRATO_API_TOKEN) {
+  console.error("❌ STRATO_API_TOKEN ist nicht gesetzt! Bitte in Render Environment Variables eintragen.");
+  process.exit(1);
+}
 
 // --- Helper: sichere JSON-Abfrage von Strato ---
 async function fetchJson(url, options) {
@@ -41,8 +46,8 @@ async function saveTicketToStrato(eventName, ticketsNew) {
   return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer TsFhNhbhXADNQb2UwBK8'
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${STRATO_API_TOKEN}` // Token aus Env Variable
     },
     body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew }),
   });
@@ -50,7 +55,11 @@ async function saveTicketToStrato(eventName, ticketsNew) {
 
 // --- Alle Tickets abrufen ---
 async function getAllTicketsFromStrato() {
-  return fetchJson(STRATO_GET_TICKETS);
+  return fetchJson(STRATO_GET_TICKETS, {
+    headers: {
+      "Authorization": `Bearer ${STRATO_API_TOKEN}` // Token aus Env Variable
+    }
+  });
 }
 
 // --- Weeztix Webhook ---
@@ -118,7 +127,11 @@ app.post("/weeztix", async (req, res) => {
 // --- Admin Endpoints ---
 app.post("/admin/reset", async (req, res) => {
   if (!STRATO_RESET_TICKETS) return res.status(500).send("Reset URL nicht gesetzt");
-  const result = await fetchJson(STRATO_RESET_TICKETS);
+  const result = await fetchJson(STRATO_RESET_TICKETS, {
+    headers: {
+      "Authorization": `Bearer ${STRATO_API_TOKEN}` // Token aus Env Variable
+    }
+  });
   console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
   res.json(result);
 });
