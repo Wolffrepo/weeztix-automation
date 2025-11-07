@@ -1,164 +1,201 @@
-Weeztix Automation mit Pushover (Strato REST API)
+# 🎟️ Weeztix Automation mit Pushover & Strato-Datenbank
 
-Dieses Projekt ermöglicht es, automatisch bei jedem Ticketverkauf in Weeztix eine Push-Benachrichtigung über Pushover zu erhalten.
-Die Lösung nutzt einen Render-Node.js-Service, der alle Webhook-Anfragen von Weeztix verarbeitet und über Strato REST API die Ticketzahlen verwaltet.
+Diese Anwendung automatisiert Benachrichtigungen und Ticketzählungen für **Weeztix-Events**.  
+Bei jedem Ticketverkauf wird eine **Push-Nachricht über Pushover** gesendet und die **Gesamtzahl verkaufter Tickets** in einer **MySQL-Datenbank bei Strato** aktualisiert.
 
-📌 Features
+---
 
-Dynamische Verarbeitung aller Events ohne feste event_id
+## 📦 Features
 
-Push-Nachrichten bei Ticketkauf
+* Automatische Pushover-Benachrichtigung bei jedem Ticketverkauf  
+* Speicherung der verkauften Tickets pro Event in einer externen MySQL-Datenbank  
+* Web-basiertes Admin-Panel zum manuellen Verwalten von Events  
+* API-gesicherte Kommunikation zwischen Render-Server und Strato  
+* Passwortgeschützte Admin-Schnittstelle  
+* Unterstützung von Singular/Plural („1 Ticket“ vs. „2 Tickets“)  
+* GitHub-Keep-Alive-Workflow gegen Render-Timeout  
 
-Keep-Alive Workflow über GitHub Actions für Free-Tier Render
+---
 
-Tickets persistent in Strato MySQL über REST API
+## ⚙️ Systemübersicht
 
-Admin-Endpunkte zum Setzen oder Zurücksetzen von Tickets
+Weeztix ──▶ Render Webhook (server.js)
+               │
+               ▼
+        Strato PHP API (api.php)
+               │
+               ▼
+           MySQL Datenbank
+               │
+               ▼
+        Pushover Benachrichtigung
 
-Robustes Handling: HTML-Fehlerseiten von Strato werden abgefangen
+---
 
-🛠️ Voraussetzungen
+## 🧩 Komponenten
 
-Weeztix Organizer Account
+| Datei | Ort | Beschreibung |
+|--------|-----|--------------|
+| `server.js` | Render-Server | Node.js-Webhook-Service – empfängt Daten von Weeztix, sendet Pushover-Nachricht und aktualisiert Strato |
+| `admin.html` | Render-Server | Browser-basiertes Admin-Panel zur manuellen Verwaltung |
+| `api.php` | Strato-Hosting | PHP-API zur Speicherung der Ticketzahlen |
+| `events` | MySQL-Tabelle | Datenbanktabelle mit Eventnamen und Ticketzahlen |
 
-Pushover Account mit TOKEN und USER
+---
 
-GitHub Account (für Keep-Alive)
+## 🚀 Setup
 
-Render Account (Free-Tier reicht)
+### 1️⃣ Render Webservice einrichten
 
-Strato Webspace mit PHP + MySQL
+1. Repository bei **GitHub** anlegen  
+2. In **Render** → „New Web Service“ → Repository auswählen  
+3. Build-Befehl:
+   ```bash
+   npm install
+   ```
+   Start-Befehl:
+   ```bash
+   npm start
+   ```
+4. Environment-Variablen im Render-Dashboard setzen:
+   ```env
+   PUSHOVER_TOKEN=<pushover_app_token>
+   PUSHOVER_USER=<pushover_user_key>
+   ADMIN_PASSWORD=<admin_passwort>
+   API_URL=https://deine-domain.de/api.php
+   ```
+5. Nach dem Deployment ist der Webhook erreichbar unter:
+   ```
+   https://<render-name>.onrender.com/weeztix
+   ```
 
-⚙️ Setup
-1️⃣ Strato REST API
+---
 
-Erstelle auf Strato einen Ordner /weeztix-api/ mit folgenden PHP-Dateien:
+### 2️⃣ Weeztix Automation konfigurieren
 
-getTickets.php – liefert alle Tickets als JSON:
+1. In Weeztix unter **Automationen** eine neue Automation anlegen  
+2. **Trigger:** „Bei neuer Bestellung / Ticketkauf“  
+3. **Action:** „HTTP Request / Outgoing Webhook“ → „Send Request“  
+4. Webhook-Account: „None (keine Authentifizierung)“  
+5. Methode: `POST`  
+6. URL:
+   ```
+   https://<render-name>.onrender.com/weeztix
+   ```
+7. Parameter hinzufügen:
+   * `event_name` → Typ: String → z. B. `Order Paid Name (Shop)`
+   * `ticket_count` → Typ: String → z. B. `Order Paid: Tickets`
 
-<?php
-header('Content-Type: application/json');
-echo json_encode(["Event A" => 5, "Event B" => 2]);
-?>
+Speichern und aktivieren.
 
+---
 
-updateTicket.php – fügt Tickets hinzu oder aktualisiert die Gesamtzahl:
+### 3️⃣ Datenbank auf Strato vorbereiten
 
-<?php
-header('Content-Type: application/json');
-$data = json_decode(file_get_contents('php://input'), true);
-$event = $data['event_name'];
-$count = (int)$data['ticket_count'];
-// Hier Logik einfügen, um Tickets in DB zu speichern und summieren
-echo json_encode(["status" => "ok"]);
-?>
+1. Im Strato-Hosting-Bereich **MySQL-Datenbank anlegen**
+2. Tabelle erstellen:
 
+   ```sql
+   CREATE TABLE events (
+     id INT AUTO_INCREMENT PRIMARY KEY,
+     event_name VARCHAR(255) NOT NULL,
+     total_tickets INT DEFAULT 0
+   );
+   ```
+3. Datei `api.php` auf den Webspace hochladen (z. B. in `/htdocs/api.php`)
+4. In der Datei `api.php` Zugangsdaten anpassen:
+   ```php
+   $servername = "localhost";
+   $username = "dein_user";
+   $password = "dein_passwort";
+   $dbname = "deine_datenbank";
+   $admin_password = "changeme"; // muss mit ADMIN_PASSWORD in Render identisch sein
+   ```
 
-resetTickets.php (optional) – setzt alle Ticketzahlen zurück:
+---
 
-<?php
-header('Content-Type: application/json');
-// Alle Ticketzahlen auf 0 setzen
-echo json_encode(["status" => "reset"]);
-?>
+### 4️⃣ Admin-Panel verwenden
 
+Das Admin-Panel erlaubt manuelles Hinzufügen oder Ändern von Eventdaten.
 
-⚠️ Wichtig: PHP darf keine HTML-Ausgaben enthalten, nur JSON!
+1. Aufrufen:
+   ```
+   https://<render-name>.onrender.com/admin
+   ```
+2. Admin-Passwort eingeben  
+3. Eventnamen und Ticketanzahl eintragen  
+4. „Aktualisieren“ klicken → die Änderungen werden in der Strato-Datenbank gespeichert
 
-2️⃣ Render Node.js Service
+---
 
-Repository bei GitHub hosten (server.js, package.json inkl. express, node-fetch).
+### 5️⃣ Keep-Alive Workflow (optional, empfohlen)
 
-Render → New → Web Service → Repository auswählen
+Damit der Render-Dienst im Free-Plan aktiv bleibt:
 
-Build & Start Commands:
-
-npm install
-npm start
-
-
-Environment Variables in Render setzen:
-
-PUSHOVER_TOKEN=<dein pushover token>
-PUSHOVER_USER=<dein pushover user>
-STRATO_GET_TICKETS=https://deinedomain.de/weeztix-api/getTickets.php
-STRATO_UPDATE_TICKET=https://deinedomain.de/weeztix-api/updateTicket.php
-STRATO_RESET_TICKETS=https://deinedomain.de/weeztix-api/resetTickets.php
-
-
-Weeztix Webhook auf Render-URL zeigen:
-
-https://<project>.onrender.com/weeztix
-
-3️⃣ Weeztix Automation
-
-Weeztix → Automationen → Neue Automation
-
-Trigger: Bei neuer Bestellung / Ticketkauf
-
-Action: Send Request
-
-Webhook Account: Neuen Account anlegen → Authentifizierung: None
-
-URL eintragen:
-
-https://<project>.onrender.com/weeztix
-
-
-Methode: POST
-
-Speichern & Aktivieren
-
-Hinweis: Alle Daten werden automatisch im JSON-Body gesendet.
-
-4️⃣ Testen
-
-CMD Beispiel:
-
-curl -X POST https://<project>.onrender.com/weeztix -H "Content-Type: application/json" -d "{\"event_name\":\"Testevent\",\"ticket_count\":2}"
-
-
-Im Render-Log sollte erscheinen:
-
-🎟️ Neue Anfrage von Weeztix empfangen!
-🔹 Body: {...}
-📤 Nachricht an Pushover: 2 neue Tickets verkauft (insgesamt 2)
-
-5️⃣ Keep-Alive Workflow (GitHub Actions)
-
-Verhindert, dass der Free-Tier Render-Service einschläft:
-
+```yaml
 name: Keep-Alive Ping
-
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: "*/15 * * * *"
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render Webhook
-        run: curl -s https://<project>.onrender.com/weeztix
+      - name: Ping Render
+        run: curl -s https://<render-name>.onrender.com/weeztix
+```
 
-6️⃣ Admin-Endpunkte
-Endpoint	Methode	Beschreibung
-/admin/reset	POST	Löscht alle Tickets
-/admin/set	POST	Setzt Ticketzahl für ein Event, Body: { "event_name": "Event A", "total": 5 }
-/stats	GET	Gibt alle Events mit aktuellen Ticketzahlen zurück
-📝 Hinweise
+---
 
-Weeztix Username / Passwort / API-Key wird nicht benötigt
+## 🛡️ Sicherheitshinweise
 
-Die Automation funktioniert automatisch für alle bestehenden und neuen Events
+* Das Admin-Passwort wird **nicht im Frontend gespeichert**, sondern über `process.env.ADMIN_PASSWORD` geprüft  
+* Die Kommunikation zwischen Render und Strato erfolgt per HTTPS und passwortgeschützter API  
+* Es werden **keine Weeztix-Login- oder API-Daten** benötigt  
 
-Pushover-Token/User muss korrekt gesetzt sein
+---
 
-Strato PHP muss erreichbar sein, sonst kann Render keine Tickets speichern
+## 🔧 Beispiel-API-Nutzung
 
-HTML oder Fehlerseiten von Strato werden abgefangen und führen nicht mehr zu Abstürzen
+```bash
+curl -X POST https://<render-name>.onrender.com/weeztix   -H "Content-Type: application/json"   -d '{"event_name":"Test Event","ticket_count":3}'
+```
 
-⚡ Fertig!
+Ergebnis:
+```
+📩 Neue Anfrage von Weeztix empfangen!
+📤 Nachricht an Pushover: 3 neue Tickets verkauft (Test Event)
+✅ API Rückmeldung: {"success":true,"event":"Test Event","added":3}
+```
 
-Nach dem Setup bekommt jeder Ticketkauf automatisch eine Pushover-Nachricht.
-Alle Ticketzahlen werden persistent in Strato über die REST API gespeichert.
+---
+
+## 📊 Beispiel-Eintrag in der Datenbank
+
+| id | event_name | total_tickets |
+|----|-------------|---------------|
+| 1  | Test Event  | 42            |
+
+---
+
+## ✅ Zusammenfassung
+
+| Komponente | Aufgabe |
+|-------------|----------|
+| **Render Webhook** | empfängt Verkauf-Daten, verarbeitet und meldet an Strato |
+| **Strato PHP-API** | speichert und aktualisiert Ticketzahlen |
+| **MySQL DB** | persistente Speicherung aller Events |
+| **Admin-Panel** | manuelles Bearbeiten der Daten im Browser |
+| **Pushover** | sendet Benachrichtigung an Smartphone oder Desktop |
+
+---
+
+## 💡 Tipp
+
+Die Anwendung funktioniert vollständig ohne externe Weeztix-Authentifizierung.  
+Nur der ausgehende Webhook von Weeztix muss korrekt gesetzt werden.
+
+---
+
+© 2025 – Weeztix Automation by Pascal Wolff - System Administration
