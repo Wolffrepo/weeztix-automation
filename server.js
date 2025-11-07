@@ -13,6 +13,7 @@ const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;
 const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
 const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;
+const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN;
 
 // --- Helper: sichere JSON-Abfrage von Strato ---
 async function fetchJson(url, options) {
@@ -39,7 +40,10 @@ async function fetchJson(url, options) {
 async function saveTicketToStrato(eventName, ticketsNew) {
   return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ${STRATO_API_TOKEN}'
+    },
     body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew }),
   });
 }
