@@ -15,6 +15,9 @@ const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
 const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;
 const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN; // Token aus Env Variable
 
+// Liste der Events, die ignoriert werden sollen
+const IGNORED_EVENTS = ["Gästeliste"];
+
 if (!STRATO_API_TOKEN) {
   console.error("❌ STRATO_API_TOKEN ist nicht gesetzt! Bitte in Render Environment Variables eintragen.");
   process.exit(1);
@@ -91,6 +94,13 @@ app.post("/weeztix", async (req, res) => {
   console.log("🔍 Empfangene Felder:", JSON.stringify(data, null, 2));
 
   const eventName = data.event_name || "null";
+
+  // Wenn Event in der Ignore-Liste, nichts machen
+  if (IGNORED_EVENTS.includes(eventName)) {
+    console.log(`⚠️ Event "${eventName}" wird ignoriert.`);
+    return res.status(200).send(`Event "${eventName}" ignoriert ✅`);
+  }
+  
   const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
   await saveTicketToStrato(eventName, ticketsNew);
