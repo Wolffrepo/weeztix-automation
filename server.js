@@ -42,7 +42,7 @@ async function saveTicketToStrato(eventName, ticketsNew) {
     method: "POST",
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ${STRATO_API_TOKEN}'
+      'Authorization': 'Bearer TsFhNhbhXADNQb2UwBK8'
     },
     body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew }),
   });
