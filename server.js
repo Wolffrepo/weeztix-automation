@@ -8,48 +8,68 @@ app.use(express.text({ type: "*/*" }));
 
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme";
+const API_URL = process.env.API_URL; // z. B. https://pwevent.de/api.php
 
-// --- Strato REST API URLs ---
-const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;
-const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
-const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS; // optional
-
-// --- Helper: sichere JSON-Abfrage von Strato ---
-async function fetchJson(url, options) {
+// Hilfsfunktion: sichere JSON-Abfrage (falls API HTML/Fehler liefert)
+async function safeFetchJson(url, options) {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
-      console.error(`❌ Strato API Fehler: ${res.status} ${res.statusText}`);
-      return {};
+      console.error(`API antwortete mit Status ${res.status} ${res.statusText} für ${url}`);
+      return null;
     }
     const text = await res.text();
     try {
       return JSON.parse(text);
     } catch (err) {
-      console.error("❌ Strato liefert kein JSON:", text);
-      return {};
+      console.error("API lieferte kein JSON:", text);
+      return null;
     }
   } catch (err) {
-    console.error("❌ Fehler beim Abrufen von Strato:", err);
-    return {};
+    console.error("Fehler beim Abrufen der API:", err);
+    return null;
   }
 }
 
-// --- Tickets an Strato senden ---
-async function saveTicketToStrato(eventName, ticketsNew) {
-  return fetchJson(STRATO_UPDATE_TICKET, {
+// Sendet Update (diff) an Strato-API
+async function sendUpdateToApi(eventName, ticketsNew) {
+  if (!API_URL) {
+    console.warn("API_URL ist nicht gesetzt; Update wird nicht gesendet.");
+    return null;
+  }
+  return safeFetchJson(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew }),
+    body: JSON.stringify({
+      password: ADMIN_PASSWORD,
+      action: "update_tickets",
+      event_name: eventName,
+      tickets_new: ticketsNew,
+    }),
   });
 }
 
-// --- Alle Tickets abrufen ---
-async function getAllTicketsFromStrato() {
-  return fetchJson(STRATO_GET_TICKETS);
+// Holt alle Tickets / Gesamtsummen von der API
+// Erwartet idealerweise ein JSON-Objekt: { "Event A": 12, "Event B": 5 }
+async function fetchTotalsFromApi() {
+  if (!API_URL) return null;
+
+  // Versuch 1: GET mit query param ?action=get_tickets
+  const tryUrl = API_URL.includes("?") ? `${API_URL}&action=get_tickets` : `${API_URL}?action=get_tickets`;
+  let data = await safeFetchJson(tryUrl, { method: "GET" });
+  if (data) return data;
+
+  // Versuch 2: POST mit action=get_tickets
+  data = await safeFetchJson(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: ADMIN_PASSWORD, action: "get_tickets" }),
+  });
+  return data; // kann null sein
 }
 
-// --- Weeztix Webhook ---
+// Weeztix Webhook
 app.post("/weeztix", async (req, res) => {
   console.log("📩 Neue Anfrage von Weeztix empfangen!");
 
@@ -59,17 +79,13 @@ app.post("/weeztix", async (req, res) => {
       data = JSON.parse(req.body);
       console.log("📦 JSON aus Text erkannt");
     } catch {
-      data = Object.fromEntries(
-        req.body
-          .split("&")
-          .map((pair) => pair.split("="))
-          .map(([k, v]) => [decodeURIComponent(k), decodeURIComponent(v || "")])
-      );
-      console.log("📦 Form-Data erkannt");
+      // urlencoded body => parse
+      data = Object.fromEntries(new URLSearchParams(req.body));
+      console.log("📦 URL-encoded Body erkannt und geparst");
     }
-  } else if (Object.keys(req.body).length > 0) {
+  } else if (req.body && Object.keys(req.body).length > 0) {
     data = req.body;
-    console.log("📦 JSON oder URL-Encoded erkannt");
+    console.log("📦 JSON Body erkannt");
   } else {
     console.log("⚠️ Kein Body empfangen – vermutlich leerer Request!");
     return res.status(200).send("Kein Body empfangen");
@@ -77,18 +93,40 @@ app.post("/weeztix", async (req, res) => {
 
   console.log("🔍 Empfangene Felder:", JSON.stringify(data, null, 2));
 
-  const eventName = data.event_name || "null";
-  const ticketsNew = parseInt(data.ticket_count || 0, 10);
+  const eventName = data.event_name || "Unbekanntes Event";
+  const ticketsNew = Number(data.ticket_count) || 0;
 
-  await saveTicketToStrato(eventName, ticketsNew);
-  const ticketsTotals = await getAllTicketsFromStrato();
-  const ticketsTotal = ticketsTotals[eventName] || ticketsNew;
+  // 1) Update an Strato senden (diff)
+  const updateResult = await sendUpdateToApi(eventName, ticketsNew);
+  if (updateResult === null) {
+    console.log("⚠️ Update an API konnte nicht bestätigt werden (updateResult === null)");
+  } else {
+    console.log("✅ API-Update Result:", updateResult);
+  }
 
+  // 2) Gesamtsumme abfragen
+  let ticketsTotal = null;
+  const totals = await fetchTotalsFromApi();
+  if (totals && typeof totals === "object") {
+    // Falls API eine Map zurückgibt { "Event A": 12, ... }
+    if (Object.prototype.hasOwnProperty.call(totals, eventName)) {
+      ticketsTotal = Number(totals[eventName]);
+    } else if (typeof totals.total === "number") {
+      // Falls API ein einzelnes Objekt { total: 12, event: "..." } zurückgibt
+      ticketsTotal = totals.total;
+    }
+  }
+
+  // Fallback: falls kein total ermittelbar, Nutze nur ticketsNew
+  if (ticketsTotal === null) ticketsTotal = ticketsNew;
+
+  // 3) Nachricht zusammenbauen (Singular/Plural beibehalten) - jetzt mit total
   const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
-  const message = `${ticketsNew} ${ticketWording} (insgesamt ${ticketsTotal})`;
+  const message = `${ticketsNew} ${ticketWording} (Gesamt ${ticketsTotal})`;
 
   console.log("📤 Nachricht an Pushover:", message);
 
+  // 4) Pushover senden (falls konfiguriert)
   if (PUSHOVER_TOKEN && PUSHOVER_USER) {
     try {
       const resp = await fetch("https://api.pushover.net/1/messages.json", {
@@ -97,47 +135,26 @@ app.post("/weeztix", async (req, res) => {
         body: JSON.stringify({
           token: PUSHOVER_TOKEN,
           user: PUSHOVER_USER,
-          message,
           title: `🎟️ ${eventName}`,
+          message,
         }),
       });
-      const result = await resp.json();
-      console.log("📬 Pushover Response:", result);
+      const pushoverRes = await resp.text();
+      console.log("📬 Pushover API Antwort:", pushoverRes);
     } catch (err) {
       console.error("❌ Fehler beim Senden an Pushover:", err);
     }
+  } else {
+    console.log("⚠️ PUSHOVER_TOKEN oder PUSHOVER_USER nicht gesetzt — Pushover nicht gesendet.");
   }
 
   res.status(200).send("Webhook verarbeitet ✅");
 });
 
-// --- Admin Endpoints ---
-app.post("/admin/reset", async (req, res) => {
-  if (!STRATO_RESET_TICKETS) return res.status(500).send("Reset URL nicht gesetzt");
-  const result = await fetchJson(STRATO_RESET_TICKETS);
-  console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
-  res.json(result);
-});
-
-app.post("/admin/set", async (req, res) => {
-  const { event_name, total } = req.body;
-  if (!event_name || typeof total !== "number") {
-    return res.status(400).send("Bitte event_name und total (Number) angeben");
-  }
-
-  const ticketsTotals = await getAllTicketsFromStrato();
-  const current = ticketsTotals[event_name] || 0;
-  const diff = total - current;
-  await saveTicketToStrato(event_name, diff);
-
-  console.log(`⚠️ Ticket-Zähler für Event "${event_name}" gesetzt auf ${total}`);
-  res.send(`Ticket-Zähler für "${event_name}" gesetzt ✅`);
-});
-
-// --- Stats Endpoint ---
-app.get("/stats", async (req, res) => {
-  const ticketsTotals = await getAllTicketsFromStrato();
-  res.json(ticketsTotals);
+// Admin-Page (falls vorhanden)
+app.get("/admin", (req, res) => {
+  // wenn admin.html statisch bereitgestellt wird, pfad anpassen
+  res.sendFile(new URL("./admin.html", import.meta.url).pathname);
 });
 
 const PORT = process.env.PORT || 10000;
