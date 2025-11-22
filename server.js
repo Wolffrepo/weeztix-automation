@@ -16,7 +16,7 @@ const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;
 const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN; // Token aus Env Variable
 
 // Liste der Events, die ignoriert werden sollen
-const IGNORED_EVENTS = ["Gästeliste"];
+const IGNORED_EVENTS = [""];
 
 if (!STRATO_API_TOKEN) {
   console.error("❌ STRATO_API_TOKEN ist nicht gesetzt! Bitte in Render Environment Variables eintragen.");
