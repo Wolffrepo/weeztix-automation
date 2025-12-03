@@ -23,7 +23,7 @@ Bei jedem Ticketverkauf wird eine **Push-Nachricht über Pushover** gesendet und
 Weeztix ──▶ Render Webhook (`server.js`)
 │
 ▼
-Strato PHP API (`getTickets.php`, `updateTickets.php`, `resetTickets.php`)
+Strato PHP API
 │
 ▼
 MySQL Datenbank
@@ -35,15 +35,18 @@ Pushover Benachrichtigung
 
 ## 🧩 Komponenten
 
-| Datei               | Ort            | Beschreibung                                                                                            |
-| ------------------- | -------------- | ------------------------------------------------------------------------------------------------------- |
-| `server.js`         | Render-Server  | Node.js-Webhook-Service – empfängt Daten von Weeztix, sendet Pushover-Nachricht und aktualisiert Strato |
-| `admin.php`         | Strato-Hosting | Passwortgeschütztes Admin-Panel zur manuellen Verwaltung                                                |
-| `getTickets.php`    | Strato-Hosting | PHP-API zum Abrufen aller Ticketzahlen                                                                  |
-| `updateTickets.php` | Strato-Hosting | PHP-API zum Hinzufügen oder Setzen von Ticketzahlen                                                     |
-| `resetTickets.php`  | Strato-Hosting | PHP-API zum Zurücksetzen aller Ticketzahlen                                                             |
-| `.env`              | Strato-Hosting | Enthält Admin-Benutzername, Passwort und API-Token (nicht ins Repo einchecken)                          |
-| `events`            | MySQL-Tabelle  | Datenbanktabelle mit Eventnamen und Ticketzahlen                                                        |
+| Datei                   | Ort            | Beschreibung                                                                                            |
+| ----------------------- | -------------- | ------------------------------------------------------------------------------------------------------- |
+| `server.js`             | Render-Server  | Node.js-Webhook-Service – empfängt Daten von Weeztix, sendet Pushover-Nachricht und aktualisiert Strato |
+| `.env`                  | Strato-Hosting | Enthält Admin-Benutzername und Passwort für das Webpanel                                                |
+| `admin.php`             | Strato-Hosting | Passwortgeschütztes Admin-Panel zur manuellen Verwaltung                                                |
+| `config.php`            | Strato-Hosting | Enthält Datenbankzugang und API-Token                                                                   |
+| `deleteEvent.php`       | Strato-Hosting | PHP-API zum entfernen von einzelnen Events per id                                                       |
+| `getTickets.php`        | Strato-Hosting | PHP-API zum Abrufen aller Ticketzahlen                                                                  |
+| `getTicketsForAdmin.php`| Strato-Hosting | Initiale Verbindung zur Datenbank                                                                       |
+| `updateTickets.php`     | Strato-Hosting | PHP-API zum Ändern von Ticketzahlen per id                                                              |
+| `resetTickets.php`      | Strato-Hosting | PHP-API zum Zurücksetzen aller Ticketzahlen per id                                                      |
+| `events`                | MySQL-Tabelle  | Datenbanktabelle mit Eventnamen und Ticketzahlen                                                        |
 
 ---
 
@@ -115,24 +118,8 @@ Speichern und aktivieren.
      total INT DEFAULT 0
    );
    ```
-3. Dateien `getTickets.php`, `updateTickets.php`, `resetTickets.php`, `admin.php` und `config.php` auf den Webspace hochladen
-4. `.env`-Datei anlegen im selben Verzeichnis:
+3. Dateien im Webserver Verzeichnis auf den Webspace hochladen
 
-   ```env
-   ADMIN_USER=<dein_admin_user>
-   ADMIN_PASS=<dein_admin_passwort>
-   STRATO_API_TOKEN=<strato_api_token>
-   ```
-5. In den PHP-Dateien `config.php` die Variablen aus `.env` auslesen:
-
-   ```php
-   $env = parse_ini_file(__DIR__.'/.env');
-   define('ADMIN_USER', $env['ADMIN_USER']);
-   define('ADMIN_PASS', $env['ADMIN_PASS']);
-   define('API_TOKEN', $env['STRATO_API_TOKEN']);
-   ```
-
----
 
 ### 4️⃣ Admin-Panel verwenden
 
@@ -141,9 +128,9 @@ Speichern und aktivieren.
    ```
    https://<deine-strato-domain>/admin.php
    ```
-2. Admin-Benutzername und Passwort eingeben
+2. Admin-Benutzername und Passwort eingeben (aus der .env)
 3. Events werden angezeigt (Events in der **Ignore-Liste**, z. B. „Gästeliste“, werden nicht angezeigt)
-4. Tickets hinzufügen, setzen oder alle zurücksetzen
+4. Ticketzahlen ändern, Events löschen oder alle zurücksetzen
 5. Änderungen werden direkt in der **Strato-Datenbank** gespeichert
 
 ---
@@ -216,7 +203,7 @@ Ergebnis:
 
 ---
 
-## 💡 Tipp
+## 💡 NeedToKnow
 
 * Anwendung funktioniert vollständig ohne externe Weeztix-Authentifizierung.
 * Nur der ausgehende Webhook von Weeztix muss korrekt gesetzt werden.
