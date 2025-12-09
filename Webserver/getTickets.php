@@ -15,7 +15,7 @@ if ($conn->connect_error) {
     die(json_encode(["error"=>"DB Verbindung fehlgeschlagen: ".$conn->connect_error]));
 }
 
-$stmt = $conn->prepare("SELECT event_name, total FROM tickets");
+$stmt = $conn->prepare("SELECT id, event_name, total FROM tickets");
 $stmt->execute();
 $result = $stmt->get_result();
 

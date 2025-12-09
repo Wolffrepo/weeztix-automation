@@ -28,7 +28,7 @@ if ($conn->connect_error) {
 
 try {
     $stmt = $conn->prepare("DELETE FROM tickets WHERE id = ?");
-    $stmt->bind_param("i", $eventId);  // <-- hier war der Fehler
+    $stmt->bind_param("i", $eventId);
     $stmt->execute();
     $stmt->close();
 
