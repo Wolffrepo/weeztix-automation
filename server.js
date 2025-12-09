@@ -50,7 +50,6 @@ async function fetchJson(url, options = {}) {
 
 // --- Ticket speichern ---
 async function saveTicketToStrato(eventName, ticketsNew) {
-  console.log("📡 Strato Antwort:", result);
   console.log("➡️ Strato Update URL:", STRATO_UPDATE_TICKET);
   return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
