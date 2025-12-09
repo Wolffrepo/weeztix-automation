@@ -13,7 +13,6 @@ $result = $conn->query("SELECT * FROM tickets");
 $tickets = [];
 while($row = $result->fetch_assoc()){
     $tickets[] = [
-        "id" => $row["id"],
         "event" => $row["event_name"],
         "total" => (int)$row["total"]
     ];

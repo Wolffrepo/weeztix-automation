@@ -11,12 +11,12 @@ if(!isset($headers['Authorization']) || $headers['Authorization'] !== 'Bearer '.
 
 // JSON auslesen
 $data = json_decode(file_get_contents("php://input"), true);
-$eventId = $data['event_id'] ?? null;
+$eventName = $data['event_name'] ?? null;
 
-if (!$eventId) {
+if (!$eventName) {
     echo json_encode([
         "success" => false,
-        "message" => "Keine Event-ID übergeben"
+        "message" => "Kein Event-Namen übergeben"
     ]);
     exit;
 }
@@ -27,8 +27,8 @@ if ($conn->connect_error) {
 }
 
 try {
-    $stmt = $conn->prepare("DELETE FROM tickets WHERE id = ?");
-    $stmt->bind_param("i", $eventId);
+    $stmt = $conn->prepare("DELETE FROM tickets WHERE event_name = ?");
+    $stmt->bind_param("i", $eventName);
     $stmt->execute();
     $stmt->close();
 
