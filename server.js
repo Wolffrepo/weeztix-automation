@@ -55,7 +55,7 @@ async function fetchJson(url, options) {
 // ---------------------------------------------------------
 // Strato: Tickets aktualisieren
 // ---------------------------------------------------------
-async function saveTicketToStrato(eventId, ticketsNew) {
+async function saveTicketToStrato(eventName, ticketsNew) {
   return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
     headers: {
@@ -63,7 +63,7 @@ async function saveTicketToStrato(eventId, ticketsNew) {
       "Authorization": `Bearer ${STRATO_API_TOKEN}`,
     },
     body: JSON.stringify({
-      event_id: eventId,
+      event_name: eventName,
       ticket_count: ticketsNew,
     }),
   });
@@ -121,7 +121,7 @@ app.post("/weeztix", async (req, res) => {
   const ticketsNew = parseInt(data.ticket_count || 0);
 
   // Tickets speichern
-  await saveTicketToStrato(eventId, ticketsNew);
+  await saveTicketToStrato(eventName, ticketsNew);
 
   // Aktuellen Gesamtstand holen
   const totals = await getAllTicketsFromStrato();
