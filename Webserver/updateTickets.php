@@ -12,11 +12,11 @@ if (!isset($headers['Authorization']) || $headers['Authorization'] !== 'Bearer '
 // JSON auslesen
 $input = json_decode(file_get_contents("php://input"), true);
 
-if (!isset($input['event_id']) || !isset($input['ticket_count'])) {
-    die(json_encode(["success" => false, "message" => "event_id und ticket_count erforderlich"]));
+if (!isset($input['event_name']) || !isset($input['ticket_count'])) {
+    die(json_encode(["success" => false, "message" => "event_name und ticket_count erforderlich"]));
 }
 
-$eventId = (int)$input['event_id'];
+$eventName = $input['event_name'];
 $count   = (int)$input['ticket_count'];
 
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
@@ -28,8 +28,8 @@ $conn->begin_transaction();
 
 try {
     // Event prüfen (Lock)
-    $stmt = $conn->prepare("SELECT total FROM tickets WHERE id = ? FOR UPDATE");
-    $stmt->bind_param("i", $eventId);
+    $stmt = $conn->prepare("SELECT total FROM tickets WHERE name = ? FOR UPDATE");
+    $stmt->bind_param("i", $eventName);
     $stmt->execute();
     $stmt->store_result();
 
@@ -44,8 +44,8 @@ try {
             throw new Exception("Ticketanzahl darf nicht negativ werden.");
         }
 
-        $update = $conn->prepare("UPDATE tickets SET total = ? WHERE id = ?");
-        $update->bind_param("ii", $newTotal, $eventId);
+        $update = $conn->prepare("UPDATE tickets SET total = ? WHERE name = ?");
+        $update->bind_param("ii", $newTotal, $eventName);
         $update->execute();
         $update->close();
 
@@ -60,7 +60,7 @@ try {
     echo json_encode([
         "success"  => true,
         "message"  => $message,
-        "event_id" => $eventId,
+        "event_name" => $eventName,
         "added"    => $count
     ]);
 
