@@ -2,129 +2,119 @@ import express from "express";
 import fetch from "node-fetch";
 
 const app = express();
-
-// --- Body Parser ---
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.text({ type: "*/*" }));
 
-// --- ENV Variablen ---
-const {
-  PUSHOVER_TOKEN,
-  PUSHOVER_USER,
-  STRATO_GET_TICKETS,
-  STRATO_UPDATE_TICKET,
-  STRATO_RESET_TICKETS,
-  STRATO_API_TOKEN,
-  ADMIN_SECRET,
-  PORT = 10000
-} = process.env;
+const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
+const PUSHOVER_USER = process.env.PUSHOVER_USER;
+
+// --- Strato REST API URLs ---
+const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;
+const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
+const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;
+const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN; // Token aus Env Variable
+
+// Liste der Events, die ignoriert werden sollen
+const IGNORED_EVENTS = [""];
 
 if (!STRATO_API_TOKEN) {
-  console.error("❌ STRATO_API_TOKEN fehlt!");
+  console.error("❌ STRATO_API_TOKEN ist nicht gesetzt! Bitte in Render Environment Variables eintragen.");
   process.exit(1);
 }
 
-if (!ADMIN_SECRET) {
-  console.error("❌ ADMIN_SECRET fehlt! Füge es in .env hinzu.");
-  process.exit(1);
-}
-
-// --- Events, die ignoriert werden sollen ---
-const IGNORED_EVENTS = []; // z.B. ["Test"]
-
-// --- Helper: JSON Request ---
-async function fetchJson(url, options = {}) {
+// --- Helper: sichere JSON-Abfrage von Strato ---
+async function fetchJson(url, options) {
   try {
     const res = await fetch(url, options);
-
-    const text = await res.text();
-
     if (!res.ok) {
-      console.error(`❌ Strato API Fehler ${res.status}: ${res.statusText}`);
-      console.error("Antwort:", text);
-      return null;
+      console.error(`❌ Strato API Fehler: ${res.status} ${res.statusText}`);
+      return {};
     }
-
+    const text = await res.text();
     try {
       return JSON.parse(text);
-    } catch {
+    } catch (err) {
       console.error("❌ Strato liefert kein JSON:", text);
-      return null;
+      return {};
     }
   } catch (err) {
-    console.error("❌ Netzwerkfehler:", err);
-    return null;
+    console.error("❌ Fehler beim Abrufen von Strato:", err);
+    return {};
   }
 }
 
-// --- Strato: Ticket-Update (ADD) ---
-async function saveTicketToStrato(eventName, increment) {
-  return await fetchJson(STRATO_UPDATE_TICKET, {
+// --- Tickets an Strato senden ---
+async function saveTicketToStrato(eventName, ticketsNew) {
+  return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${STRATO_API_TOKEN}`,
+      "Authorization": `Bearer ${STRATO_API_TOKEN}` // Token aus Env Variable
     },
-    body: JSON.stringify({
-      event_name: eventName,
-      ticket_count: increment, // WICHTIG: Additiv
-    }),
+    body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew }),
   });
 }
 
-// --- Strato: alle Tickets abrufen ---
+// --- Alle Tickets abrufen ---
 async function getAllTicketsFromStrato() {
-  return await fetchJson(STRATO_GET_TICKETS, {
-    headers: { "Authorization": `Bearer ${STRATO_API_TOKEN}` },
+  return fetchJson(STRATO_GET_TICKETS, {
+    headers: {
+      "Authorization": `Bearer ${STRATO_API_TOKEN}` // Token aus Env Variable
+    }
   });
 }
 
 // --- Weeztix Webhook ---
 app.post("/weeztix", async (req, res) => {
-  console.log("📩 Neue Anfrage von Weeztix");
+  console.log("📩 Neue Anfrage von Weeztix empfangen!");
 
-  if (!req.body || typeof req.body !== "object") {
-    return res.status(400).send("Ungültiger Request Body");
+  let data = {};
+  if (typeof req.body === "string") {
+    try {
+      data = JSON.parse(req.body);
+      console.log("📦 JSON aus Text erkannt");
+    } catch {
+      data = Object.fromEntries(
+        req.body
+          .split("&")
+          .map((pair) => pair.split("="))
+          .map(([k, v]) => [decodeURIComponent(k), decodeURIComponent(v || "")])
+      );
+      console.log("📦 Form-Data erkannt");
+    }
+  } else if (Object.keys(req.body).length > 0) {
+    data = req.body;
+    console.log("📦 JSON oder URL-Encoded erkannt");
+  } else {
+    console.log("⚠️ Kein Body empfangen – vermutlich leerer Request!");
+    return res.status(200).send("Kein Body empfangen");
   }
 
-  const eventName = typeof req.body.event_name === "string"
-    ? req.body.event_name.trim()
-    : null;
+  console.log("🔍 Empfangene Felder:", JSON.stringify(data, null, 2));
 
-  if (!eventName) return res.status(400).send("event_name fehlt");
+  const eventName = data.event_name || "null";
 
+  // Wenn Event in der Ignore-Liste, nichts machen
   if (IGNORED_EVENTS.includes(eventName)) {
-    console.log(`⚠️ Event '${eventName}' wird ignoriert`);
-    return res.status(200).send("ignored");
+    console.log(`⚠️ Event "${eventName}" wird ignoriert.`);
+    return res.status(200).send(`Event "${eventName}" ignoriert ✅`);
   }
+  
+  const ticketsNew = parseInt(data.ticket_count || 0, 10);
 
-  const ticketsNew = parseInt(req.body.ticket_count, 10);
-  if (isNaN(ticketsNew) || ticketsNew < 1) {
-    return res.status(400).send("ticket_count ungültig");
-  }
+  await saveTicketToStrato(eventName, ticketsNew);
+  const ticketsTotals = await getAllTicketsFromStrato();
+  const ticketsTotal = ticketsTotals[eventName] || ticketsNew;
 
-  console.log(`🎟️ ${ticketsNew} neues Ticket(e) für ${eventName}`);
+  const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
+  const message = `${ticketsNew} ${ticketWording} (Gesamt ${ticketsTotal})`;
 
-  // --- Strato increment ---
-  const update = await saveTicketToStrato(eventName, ticketsNew);
-  if (!update) {
-    console.error("❌ Update fehlgeschlagen");
-    return res.status(500).send("Strato Fehler");
-  }
-
-  // --- Gesamtwerte aus DB laden ---
-  const totals = await getAllTicketsFromStrato();
-  const totalCount = totals?.[eventName] ?? "(?)";
-
-  // --- Pushover ---
-  const wording = ticketsNew === 1 ? "neues Ticket" : "neue Tickets";
-  const message = `${ticketsNew} ${wording} verkauft (Gesamt ${totalCount})`;
-
-  console.log("📤 Pushover:", message);
+  console.log("📤 Nachricht an Pushover:", message);
 
   if (PUSHOVER_TOKEN && PUSHOVER_USER) {
     try {
-      await fetch("https://api.pushover.net/1/messages.json", {
+      const resp = await fetch("https://api.pushover.net/1/messages.json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -134,61 +124,48 @@ app.post("/weeztix", async (req, res) => {
           title: `🎟️ ${eventName}`,
         }),
       });
+      const result = await resp.json();
+      console.log("📬 Pushover Response:", result);
     } catch (err) {
-      console.error("❌ Pushover Fehler:", err);
+      console.error("❌ Fehler beim Senden an Pushover:", err);
     }
   }
 
-  res.status(200).send("ok");
+  res.status(200).send("Webhook verarbeitet ✅");
 });
 
-// --- Admin Auth Middleware ---
-function requireAdmin(req, res, next) {
-  const token = req.headers["x-admin-token"];
-  if (!token || token !== ADMIN_SECRET) {
-    return res.status(403).send("Forbidden");
-  }
-  next();
-}
-
-// --- Admin: Reset ---
-app.post("/admin/reset", requireAdmin, async (req, res) => {
+// --- Admin Endpoints ---
+app.post("/admin/reset", async (req, res) => {
+  if (!STRATO_RESET_TICKETS) return res.status(500).send("Reset URL nicht gesetzt");
   const result = await fetchJson(STRATO_RESET_TICKETS, {
-    headers: { "Authorization": `Bearer ${STRATO_API_TOKEN}` },
+    headers: {
+      "Authorization": `Bearer ${STRATO_API_TOKEN}` // Token aus Env Variable
+    }
   });
-
-  console.log("⚠️ Admin: Reset ausgeführt");
-
-  res.json(result || { error: true });
+  console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
+  res.json(result);
 });
 
-// --- Admin: Set absoluter Wert ---
-app.post("/admin/set", requireAdmin, async (req, res) => {
+app.post("/admin/set", async (req, res) => {
   const { event_name, total } = req.body;
+  if (!event_name || typeof total !== "number") {
+    return res.status(400).send("Bitte event_name und total (Number) angeben");
+  }
 
-  if (!event_name) return res.status(400).send("event_name fehlt");
-
-  const totalNum = parseInt(total, 10);
-  if (isNaN(totalNum)) return res.status(400).send("total ungültig");
-
-  const existing = await getAllTicketsFromStrato();
-  const current = existing?.[event_name] ?? 0;
-
-  const diff = totalNum - current;
-
+  const ticketsTotals = await getAllTicketsFromStrato();
+  const current = ticketsTotals[event_name] || 0;
+  const diff = total - current;
   await saveTicketToStrato(event_name, diff);
 
-  console.log(`⚠️ Admin: ${event_name} auf ${totalNum} gesetzt`);
-  res.send("ok");
+  console.log(`⚠️ Ticket-Zähler für Event "${event_name}" gesetzt auf ${total}`);
+  res.send(`Ticket-Zähler für "${event_name}" gesetzt ✅`);
 });
 
-// --- Stats ---
+// --- Stats Endpoint ---
 app.get("/stats", async (req, res) => {
-  const totals = await getAllTicketsFromStrato();
-  res.json(totals || {});
+  const ticketsTotals = await getAllTicketsFromStrato();
+  res.json(ticketsTotals);
 });
 
-// --- Start ---
-app.listen(PORT, () =>
-  console.log(`🚀 Server läuft auf Port ${PORT}`)
-);
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Server läuft auf Port ${PORT}`));
