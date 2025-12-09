@@ -107,15 +107,15 @@ app.post("/weeztix", async (req, res) => {
 
   console.log("📦 Empfangen:", JSON.stringify(data, null, 2));
 
-  const eventId = parseInt(data.event_id) || null;
+  const eventName = data.event_name || "null";
 
-  if (!eventId) {
-    console.log("❌ Kein event_id im Webhook!");
-    return res.status(400).send("event_id fehlt");
+  if (!eventName) {
+    console.log("❌ Kein event_name im Webhook!");
+    return res.status(400).send("event_name fehlt");
   }
 
-  if (IGNORED_EVENTS.includes(eventId)) {
-    return res.status(200).send(`Event ${eventId} ignoriert`);
+  if (IGNORED_EVENTS.includes(eventName)) {
+    return res.status(200).send(`Event ${eventName} ignoriert`);
   }
 
   const ticketsNew = parseInt(data.ticket_count || 0);
