@@ -55,7 +55,7 @@ async function fetchJson(url, options) {
 // ---------------------------------------------------------
 // Strato: Tickets aktualisieren
 // ---------------------------------------------------------
-async function saveTicketToStrato(eventId, ticketsNew) {
+async function saveTicketToStrato(eventName, ticketsNew) {
   return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
     headers: {
@@ -63,7 +63,7 @@ async function saveTicketToStrato(eventId, ticketsNew) {
       "Authorization": `Bearer ${STRATO_API_TOKEN}`,
     },
     body: JSON.stringify({
-      event_id: eventId,
+      event_name: eventName,
       ticket_count: ticketsNew,
     }),
   });
@@ -107,25 +107,25 @@ app.post("/weeztix", async (req, res) => {
 
   console.log("📦 Empfangen:", JSON.stringify(data, null, 2));
 
-  const eventId = parseInt(data.event_id) || null;
+  const eventName = data.event_name || null;
 
-  if (!eventId) {
-    console.log("❌ Kein event_id im Webhook!");
-    return res.status(400).send("event_id fehlt");
+  if (!eventName) {
+    console.log("❌ Kein event_name im Webhook!");
+    return res.status(400).send("event_name fehlt");
   }
 
-  if (IGNORED_EVENTS.includes(eventId)) {
-    return res.status(200).send(`Event ${eventId} ignoriert`);
+  if (IGNORED_EVENTS.includes(eventName)) {
+    return res.status(200).send(`Event ${eventName} ignoriert`);
   }
 
   const ticketsNew = parseInt(data.ticket_count || 0);
 
   // Tickets speichern
-  await saveTicketToStrato(eventId, ticketsNew);
+  await saveTicketToStrato(eventName, ticketsNew);
 
   // Aktuellen Gesamtstand holen
   const totals = await getAllTicketsFromStrato();
-  const totalForEvent = totals[eventId] ?? ticketsNew;
+  const totalForEvent = totals[eventName] ?? ticketsNew;
 
   const wording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
   const message = `${ticketsNew} ${wording} (Gesamt: ${totalForEvent})`;
@@ -177,19 +177,19 @@ app.post("/admin/reset", async (req, res) => {
 // Admin: Ticket-Zähler für Event setzen
 // ---------------------------------------------------------
 app.post("/admin/set", async (req, res) => {
-  const { event_id, total } = req.body;
+  const { event_name, total } = req.body;
 
-  if (!event_id || typeof total !== "number") {
-    return res.status(400).send("Bitte event_id und total angeben");
+  if (!event_name || typeof total !== "number") {
+    return res.status(400).send("Bitte event_name und total angeben");
   }
 
   const totals = await getAllTicketsFromStrato();
-  const current = totals[event_id] || 0;
+  const current = totals[event_name] || 0;
   const diff = total - current;
 
-  await saveTicketToStrato(event_id, diff);
+  await saveTicketToStrato(event_name, diff);
 
-  console.log(`⚙️ Tickets für Event #${event_id} gesetzt auf ${total}`);
+  console.log(`⚙️ Tickets für Event #${event_name} gesetzt auf ${total}`);
   res.send(`Tickets aktualisiert`);
 });
 
