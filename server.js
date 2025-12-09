@@ -1,36 +1,30 @@
 import express from "express";
 import fetch from "node-fetch";
 
-// ---------------------------------------------------------
-// Grundkonfiguration
-// ---------------------------------------------------------
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.text({ type: "*/*" }));
 
-// ---------------------------------------------------------
-// Environment Variablen
-// ---------------------------------------------------------
+// --- Pushover (optional) ---
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
+// --- Strato REST API URLs ---
 const STRATO_GET_TICKETS = process.env.STRATO_GET_TICKETS;
 const STRATO_UPDATE_TICKET = process.env.STRATO_UPDATE_TICKET;
 const STRATO_RESET_TICKETS = process.env.STRATO_RESET_TICKETS;
 const STRATO_API_TOKEN = process.env.STRATO_API_TOKEN;
 
-// Events ignorieren? (Optional)
-const IGNORED_EVENTS = [""];
-
 if (!STRATO_API_TOKEN) {
-  console.error("❌ STRATO_API_TOKEN fehlt! Bitte in Render/Hosting setzen.");
+  console.error("❌ STRATO_API_TOKEN ist nicht gesetzt!");
   process.exit(1);
 }
 
-// ---------------------------------------------------------
-// Helper: JSON laden (Strato-Safe)
-// ---------------------------------------------------------
+// --- Ignorierte Events ---
+const IGNORED_EVENTS = [""];
+
+// --- Helper: sichere JSON-Abfrage ---
 async function fetchJson(url, options) {
   try {
     const res = await fetch(url, options);
@@ -38,12 +32,11 @@ async function fetchJson(url, options) {
       console.error(`❌ Strato API Fehler: ${res.status} ${res.statusText}`);
       return {};
     }
-
     const text = await res.text();
     try {
       return JSON.parse(text);
-    } catch {
-      console.error("❌ Strato liefert ungültiges JSON:", text);
+    } catch (err) {
+      console.error("❌ Strato liefert kein JSON:", text);
       return {};
     }
   } catch (err) {
@@ -52,157 +45,128 @@ async function fetchJson(url, options) {
   }
 }
 
-// ---------------------------------------------------------
-// Strato: Tickets aktualisieren
-// ---------------------------------------------------------
+// --- Tickets an Strato senden ---
 async function saveTicketToStrato(eventName, ticketsNew) {
   return fetchJson(STRATO_UPDATE_TICKET, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${STRATO_API_TOKEN}`,
+      "Authorization": `Bearer ${STRATO_API_TOKEN}`
     },
-    body: JSON.stringify({
-      event_name: eventName,
-      ticket_count: ticketsNew,
-    }),
+    body: JSON.stringify({ event_name: eventName, ticket_count: ticketsNew })
   });
 }
 
-// ---------------------------------------------------------
-// Strato: Alle Tickets abrufen
-// ---------------------------------------------------------
+// --- Alle Tickets abrufen ---
 async function getAllTicketsFromStrato() {
   return fetchJson(STRATO_GET_TICKETS, {
-    headers: {
-      "Authorization": `Bearer ${STRATO_API_TOKEN}`,
-    },
+    headers: { "Authorization": `Bearer ${STRATO_API_TOKEN}` }
   });
 }
 
-// ---------------------------------------------------------
-// Webhook: Weeztix → Tickets aktualisieren
-// ---------------------------------------------------------
+// --- DB-Helper (Pseudo-Funktionen) ---
+// Hier würdest du deine eigene DB-Anbindung einfügen
+async function insertEventWithTickets(eventName, tickets) {
+  // In deiner echten Implementierung: INSERT INTO tickets (event_name, total)
+  console.log(`💾 Neues Event in DB: ${eventName} +${tickets} Tickets`);
+  return { event_name: eventName, total: tickets };
+}
+
+async function updateEventTicketsById(eventId, tickets) {
+  // In deiner echten Implementierung: UPDATE tickets SET total = total + tickets WHERE id = ?
+  console.log(`💾 Event-ID ${eventId} aktualisiert um +${tickets} Tickets`);
+  return { id: eventId, total: tickets };
+}
+
+// --- Webhook für Weeztix ---
 app.post("/weeztix", async (req, res) => {
-  console.log("🎫 Webhook von Weeztix empfangen");
+  console.log("📩 Neue Anfrage von Weeztix empfangen!");
 
   let data = {};
-
-  // Body Parsing (Weeztix ist unzuverlässig → Fallbacks)
-  try {
-    if (typeof req.body === "string") {
-      data = JSON.parse(req.body);
-    } else {
-      data = req.body;
-    }
-  } catch {
-    console.log("⚠️ Fallback auf URL-encoded");
-    data = Object.fromEntries(
-      req.body.split("&").map(pair => {
-        const [k, v] = pair.split("=");
-        return [decodeURIComponent(k), decodeURIComponent(v || "")];
-      })
-    );
-  }
-
-  console.log("📦 Empfangen:", JSON.stringify(data, null, 2));
-
-  const eventName = data.event_name || "null";
-
-  if (!eventName) {
-    console.log("❌ Kein event_name im Webhook!");
-    return res.status(400).send("event_name fehlt");
-  }
-
-  if (IGNORED_EVENTS.includes(eventName)) {
-    return res.status(200).send(`Event ${eventName} ignoriert`);
-  }
-
-  const ticketsNew = parseInt(data.ticket_count || 0);
-
-  // Tickets speichern
-  await saveTicketToStrato(eventName, ticketsNew);
-
-  // Aktuellen Gesamtstand holen
-  const totals = await getAllTicketsFromStrato();
-  const totalForEvent = totals[eventId] ?? ticketsNew;
-
-  const wording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
-  const message = `${ticketsNew} ${wording} (Gesamt: ${totalForEvent})`;
-
-  console.log(`📤 Pushover: ${message}`);
-
-  // Optional: Pushover Nachricht schicken
-  if (PUSHOVER_TOKEN && PUSHOVER_USER) {
+  if (typeof req.body === "string") {
     try {
-      const resp = await fetch("https://api.pushover.net/1/messages.json", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: PUSHOVER_TOKEN,
-          user: PUSHOVER_USER,
-          message,
-          title: `🎟️ ${eventName}`,
-        }),
-      });
-
-      console.log("📬 Pushover Antwort:", await resp.json());
-    } catch (err) {
-      console.error("❌ Fehler bei Pushover:", err);
+      data = JSON.parse(req.body);
+    } catch {
+      data = Object.fromEntries(
+        req.body.split("&").map(p => p.split("=")).map(([k,v]) => [decodeURIComponent(k), decodeURIComponent(v||"")])
+      );
     }
+  } else {
+    data = req.body;
   }
 
-  res.status(200).send("Webhook verarbeitet");
+  console.log("🔍 Empfangene Daten:", data);
+
+  const ticketsNew = parseInt(data.ticket_count || 0, 10);
+  const eventName = data.event_name || `event-${Date.now()}`;
+  const eventId = data.event_id; // NICHT bei Ticketkauf gesetzt
+
+  // Ignorieren, wenn Event in Liste
+  if (IGNORED_EVENTS.includes(eventName)) {
+    console.log(`⚠️ Event "${eventName}" wird ignoriert.`);
+    return res.status(200).send(`Event "${eventName}" ignoriert ✅`);
+  }
+
+  try {
+    let dbEvent;
+    if (eventId) {
+      dbEvent = await updateEventTicketsById(eventId, ticketsNew);
+    } else {
+      dbEvent = await insertEventWithTickets(eventName, ticketsNew);
+    }
+
+    // Optional: Pushover
+    if (PUSHOVER_TOKEN && PUSHOVER_USER) {
+      const ticketWording = ticketsNew === 1 ? "neues Ticket verkauft" : "neue Tickets verkauft";
+      const message = `${ticketsNew} ${ticketWording} (Gesamt ${dbEvent.total || ticketsNew})`;
+      try {
+        const resp = await fetch("https://api.pushover.net/1/messages.json", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: PUSHOVER_TOKEN,
+            user: PUSHOVER_USER,
+            message,
+            title: `🎟️ ${eventName}`
+          })
+        });
+        console.log("📬 Pushover Response:", await resp.json());
+      } catch (err) {
+        console.error("❌ Fehler bei Pushover:", err);
+      }
+    }
+
+    res.status(200).json({ success: true, event: dbEvent, ticketsAdded: ticketsNew });
+  } catch (err) {
+    console.error("❌ Fehler beim Verarbeiten:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-// ---------------------------------------------------------
-// Admin: Reset aller Tickets
-// ---------------------------------------------------------
+// --- Admin Endpoints ---
 app.post("/admin/reset", async (req, res) => {
-  if (!STRATO_RESET_TICKETS) {
-    return res.status(500).send("Reset URL fehlt");
-  }
-
+  if (!STRATO_RESET_TICKETS) return res.status(500).send("Reset URL nicht gesetzt");
   const result = await fetchJson(STRATO_RESET_TICKETS, {
-    headers: {
-      "Authorization": `Bearer ${STRATO_API_TOKEN}`,
-    },
+    headers: { "Authorization": `Bearer ${STRATO_API_TOKEN}` }
   });
-
-  console.log("🧹 Alle Tickets zurückgesetzt");
+  console.log("⚠️ Alle Ticket-Zähler zurückgesetzt!");
   res.json(result);
 });
 
-// ---------------------------------------------------------
-// Admin: Ticket-Zähler für Event setzen
-// ---------------------------------------------------------
 app.post("/admin/set", async (req, res) => {
   const { event_id, total } = req.body;
-
-  if (!event_id || typeof total !== "number") {
-    return res.status(400).send("Bitte event_id und total angeben");
-  }
-
-  const totals = await getAllTicketsFromStrato();
-  const current = totals[event_id] || 0;
-  const diff = total - current;
-
-  await saveTicketToStrato(event_id, diff);
-
-  console.log(`⚙️ Tickets für Event #${event_id} gesetzt auf ${total}`);
-  res.send(`Tickets aktualisiert`);
+  if (!event_id || typeof total !== "number") return res.status(400).send("event_id + total erforderlich");
+  await updateEventTicketsById(event_id, total); // Hier nur ID, Admin setzt direkt
+  console.log(`⚠️ Ticket-Zähler für Event-ID ${event_id} gesetzt auf ${total}`);
+  res.send(`Ticket-Zähler für Event-ID ${event_id} gesetzt ✅`);
 });
 
-// ---------------------------------------------------------
-// Public API: Ticket Daten abrufen
-// ---------------------------------------------------------
+// --- Stats ---
 app.get("/stats", async (req, res) => {
-  const totals = await getAllTicketsFromStrato();
-  res.json(totals);
+  const ticketsTotals = await getAllTicketsFromStrato();
+  res.json(ticketsTotals);
 });
 
-// ---------------------------------------------------------
-// Server Starten
-// ---------------------------------------------------------
+// --- Start Server ---
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`🚀 Server läuft auf Port ${PORT}`));
