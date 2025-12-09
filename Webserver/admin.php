@@ -127,7 +127,7 @@ function showMessage(msg, success = true) {
   setTimeout(() => { msgDiv.textContent = ''; }, 4000);
 }
 
-async function setTickets(id) {
+async function setTickets(name) {
   try {
     const total = parseInt(document.getElementById(`set-${name}`).value);
     const current = parseInt(document.getElementById(`total-${name}`).textContent);
@@ -167,7 +167,7 @@ async function resetAllTickets() {
   }
 }
 
-async function deleteEvent(id) {
+async function deleteEvent(name) {
   if (!confirm(`Event wirklich löschen?`)) return;
 
   try {
