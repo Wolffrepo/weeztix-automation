@@ -93,7 +93,6 @@ async function loadTickets() {
     }
 
     data.tickets.forEach(item => {
-      const id = parseInt(item.id);
       const event = item.event;
       const total = parseInt(item.total);
 
@@ -101,13 +100,13 @@ async function loadTickets() {
 
       row.innerHTML = `
         <td>${event}</td>
-        <td id="total-${id}">${total}</td>
+        <td id="total-${event}">${total}</td>
         <td>
-          <input type="number" id="set-${id}" value="${total}" min="0">
-          <button onclick="setTickets(${id})">Setzen</button>
+          <input type="number" id="set-${event}" value="${total}" min="0">
+          <button onclick="setTickets(${event})">Setzen</button>
         </td>
         <td>
-          <button onclick="deleteEvent(${id})">Event löschen</button>
+          <button onclick="deleteEvent(${event})">Event löschen</button>
         </td>
       `;
 
@@ -130,8 +129,8 @@ function showMessage(msg, success = true) {
 
 async function setTickets(id) {
   try {
-    const total = parseInt(document.getElementById(`set-${id}`).value);
-    const current = parseInt(document.getElementById(`total-${id}`).textContent);
+    const total = parseInt(document.getElementById(`set-${name}`).value);
+    const current = parseInt(document.getElementById(`total-${name}`).textContent);
     const diff = total - current;
 
     const res = await fetch('updateTickets.php', {
@@ -140,7 +139,7 @@ async function setTickets(id) {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + API_TOKEN
       },
-      body: JSON.stringify({ event_id: id, ticket_count: diff })
+      body: JSON.stringify({ event_name: name, ticket_count: diff })
     });
 
     const data = await res.json();
@@ -178,7 +177,7 @@ async function deleteEvent(id) {
         'Authorization': 'Bearer ' + API_TOKEN,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ event_id: id })
+      body: JSON.stringify({ event_name: name })
     });
 
     const data = await res.json();
