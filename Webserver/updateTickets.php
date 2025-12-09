@@ -29,7 +29,7 @@ $conn->begin_transaction();
 try {
     // Event prüfen (Lock)
     $stmt = $conn->prepare("SELECT total FROM tickets WHERE name = ? FOR UPDATE");
-    $stmt->bind_param("i", $eventName);
+    $stmt->bind_param("s", $eventName);
     $stmt->execute();
     $stmt->store_result();
 
